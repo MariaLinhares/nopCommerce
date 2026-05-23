@@ -1,0 +1,15 @@
+flowchart TD
+    title["<b>Scenario A — bare PlaceOrderAsync (today)</b>"]
+    A1[enter PlaceOrderAsync]:::null
+    A2[Order consumer hook]:::null
+    A3[OrderItem consumer hook]:::null
+    A4[Product update consumer hook]:::null
+    A5[before OrderPlacedEvent publish]:::null
+    AVerdict["<b>0 / 3 hooks see ambient TS</b><br/>dual-write window confirmed"]:::verdictBad
+
+    title --> A1
+    A1 --> A2 --> A3 --> A4 --> A5 --> AVerdict
+
+    classDef null fill:#fff,stroke:#c66,color:#900,stroke-dasharray: 4 2
+    classDef verdictBad fill:#ffe5e5,stroke:#c66,color:#900,font-weight:bold
+    style title fill:#fff,stroke:#fff,color:#000

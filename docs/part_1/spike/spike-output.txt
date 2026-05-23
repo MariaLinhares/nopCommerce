@@ -1,0 +1,49 @@
+=== Scenario A — bare PlaceOrderAsync (today's behaviour) ===
+[probe] A: baseline before call                            Transaction.Current = null
+[probe] A: enter PlaceOrderAsync                           Transaction.Current = null
+[probe] A: inside Order consumer                           Transaction.Current = null
+[probe] A: inside OrderItem-1 consumer                     Transaction.Current = null
+[probe] A: inside Product update consumer                  Transaction.Current = null
+[probe] A: just before OrderPlacedEvent publish            Transaction.Current = null
+[probe] A: after call returned                             Transaction.Current = null
+
+=== Scenario B — PlaceOrderAsync wrapped in TransactionScope (ADR-1 fix) ===
+[probe] B: baseline before scope                           Transaction.Current = null
+[probe] B: inside scope, before call                       Transaction.Current = non-null (isolation=Serializable)
+[probe] B: enter PlaceOrderAsync                           Transaction.Current = non-null (isolation=Serializable)
+[probe] B: inside Order consumer                           Transaction.Current = non-null (isolation=Serializable)
+[probe] B: inside OrderItem-1 consumer                     Transaction.Current = non-null (isolation=Serializable)
+[probe] B: inside Product update consumer                  Transaction.Current = non-null (isolation=Serializable)
+[probe] B: just before OrderPlacedEvent publish            Transaction.Current = non-null (isolation=Serializable)
+[probe] B: inside scope, after call                        Transaction.Current = non-null (isolation=Serializable)
+[probe] B: after scope disposed                            Transaction.Current = null
+
+=== Summary ===
+Probe                                                   Ambient TS   Isolation
+------------------------------------------------------------------------------------------
+A: baseline before call                                 absent       -
+A: enter PlaceOrderAsync                                absent       -
+A: inside Order consumer                                absent       -
+A: inside OrderItem-1 consumer                          absent       -
+A: inside Product update consumer                       absent       -
+A: just before OrderPlacedEvent publish                 absent       -
+A: after call returned                                  absent       -
+B: baseline before scope                                absent       -
+B: inside scope, before call                            PRESENT      Serializable
+B: enter PlaceOrderAsync                                PRESENT      Serializable
+B: inside Order consumer                                PRESENT      Serializable
+B: inside OrderItem-1 consumer                          PRESENT      Serializable
+B: inside Product update consumer                       PRESENT      Serializable
+B: just before OrderPlacedEvent publish                 PRESENT      Serializable
+B: inside scope, after call                             PRESENT      Serializable
+B: after scope disposed                                 absent       -
+
+Bare scenario A — consumer hooks observing ambient TS: 0/3
+Wrapped scenario B — consumer hooks observing ambient TS: 3/3
+
+VERDICT: Confirms the spike's claim.
+  (a) PlaceOrderAsync's call shape produces no ambient TransactionScope.
+  (b) Wrapping PlaceOrderAsync in `using var ts = new TransactionScope(
+      TransactionScopeAsyncFlowOption.Enabled)` makes Transaction.Current
+      flow through the awaits and is observable from the consumer hooks
+      where the outbox row would be enrolled.

@@ -1,0 +1,18 @@
+flowchart TD
+    title["<b>Scenario B — wrapped in TransactionScope (ADR-1 fix)</b>"]
+    B0[open scope<br/>AsyncFlowOption=Enabled]:::scope
+    B1[enter PlaceOrderAsync]:::present
+    B2[Order consumer hook]:::present
+    B3[OrderItem consumer hook]:::present
+    B4[Product update consumer hook]:::present
+    B5[before OrderPlacedEvent publish]:::present
+    B6[Complete and dispose]:::scope
+    BVerdict["<b>3 / 3 hooks see ambient TS</b><br/>isolation = Serializable<br/>fix works end-to-end"]:::verdictGood
+
+    title --> B0
+    B0 --> B1 --> B2 --> B3 --> B4 --> B5 --> B6 --> BVerdict
+
+    classDef present fill:#e0f5e0,stroke:#393,color:#060
+    classDef scope fill:#fff7d6,stroke:#cc8400,color:#7a5200
+    classDef verdictGood fill:#d4edda,stroke:#393,color:#060,font-weight:bold
+    style title fill:#fff,stroke:#fff,color:#000

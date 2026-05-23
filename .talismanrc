@@ -1,0 +1,6 @@
+fileignoreconfig:
+  - filename: docs/part_1/diagrams/
+    ignore_detectors:
+      - base64Content
+      - creditCardNumber
+      - hexContent

@@ -1,0 +1,28 @@
+stateDiagram-v2
+    [*] --> Placed: customer checkout<br/>(optimistic accept)
+
+    Placed --> Confirmed: StockReserved<br/>(from Inventory)
+    Placed --> Compensated: ReservationRejected<br/>(from Inventory)
+
+    Confirmed --> Shipped: ShipmentDispatched<br/>(from Shipping)
+    Shipped --> Delivered: ShipmentDelivered
+
+    Compensated --> [*]: payment released<br/>+ customer notified
+    Delivered --> [*]
+
+    Placed --> Cancelled: customer cancels
+    Confirmed --> Cancelled: customer cancels<br/>(before dispatch)
+    Cancelled --> [*]
+
+    note right of Compensated
+        New explicit state.
+        Idempotent on
+        ReservationRejected.EventId.
+        Drives QA-4 (recoverability).
+    end note
+
+    note left of Placed
+        Customer-facing copy:
+        "order received,
+        confirming with warehouse"
+    end note

@@ -1,0 +1,23 @@
+flowchart TD
+    Q[Reliable cross-context messaging?]
+
+    Q --> A1[A. Direct publish in IConsumer]
+    A1 --> A1R[Same dual-write,<br/>one level up]:::rej
+
+    Q --> A2[B. 2PC / XA across DB + broker]
+    A2 --> A2R[RabbitMQ not XA<br/>+ multi-DB-engine support<br/>+ blocking on coordinator failure]:::rej
+
+    Q --> A3[C. CDC / log mining]
+    A3 --> A3R[Engine-specific<br/>+ extra runtime<br/>+ ops cost not justified]:::rej
+
+    Q --> A4[D. Sync RabbitMQ inside order tx]
+    A4 --> A4R[Re-couples acceptance to broker<br/>= same shape as today's UPS call]:::rej
+
+    Q ==> CHOSEN[Transactional outbox<br/>+ IScheduleTask dispatcher]:::chosen
+
+    CHOSEN --> Why1[At-least-once + idempotent consumers]
+    CHOSEN --> Why2[Engine-agnostic - works with<br/>SQL Server / MySQL / Postgres]
+    CHOSEN --> Why3[Fits existing nopCommerce<br/>extension points; no core fork]
+
+    classDef rej fill:#ffe5e5,stroke:#c66,color:#900
+    classDef chosen fill:#e0f5e0,stroke:#393,color:#060,font-weight:bold

@@ -1,0 +1,30 @@
+sequenceDiagram
+    autonumber
+    participant Caller as PlaceOrderAsync<br/>(decorator-wrapped)
+    participant TS as TransactionScope<br/>(AsyncFlow=Enabled)
+    participant DB as nopCommerce DB
+    participant Outbox as OutboxMessage table
+    participant Disp as Outbox Dispatcher<br/>(IScheduleTask)
+    participant Bus as RabbitMQ
+    participant Inv as Inventory Sync Service
+
+    rect rgb(235, 245, 255)
+    Note over Caller,Outbox: One transaction - atomic
+    Caller->>TS: open scope
+    Caller->>DB: insert Order
+    Caller->>DB: insert OrderItems
+    Caller->>Outbox: insert OrderPlaced row<br/>(state = Pending)
+    Caller->>TS: Complete()
+    DB-->>Caller: both rows or neither
+    end
+
+    Note over Disp,Bus: Out of band - eventually
+    Disp->>Outbox: poll Pending rows
+    Outbox-->>Disp: OrderPlaced
+    Disp->>Bus: publish
+    Bus-->>Disp: confirm
+    Disp->>Outbox: mark Dispatched
+
+    Bus->>Inv: deliver OrderPlaced
+    Inv->>Inv: reserve stock /<br/>reject (idempotent on EventId)
+    Inv->>Bus: StockReserved | ReservationRejected

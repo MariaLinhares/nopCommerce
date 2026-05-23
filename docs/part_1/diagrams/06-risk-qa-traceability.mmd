@@ -1,0 +1,38 @@
+flowchart LR
+    subgraph Risks
+        R1[R1: IEventPublisher<br/>collision]
+        R2[R2: no ambient<br/>TransactionScope<br/><b>CONFIRMED</b>]
+        R3[R3: dispatcher<br/>polling cadence]
+        R4[R4: in-memory<br/>cache - no scale]
+        R5[R5: outbox<br/>table growth]
+    end
+
+    subgraph QA["QA scenarios (Person 2)"]
+        QA1[QA-1<br/>Availability]
+        QA2[QA-2<br/>Consistency]
+        QA3[QA-3<br/>Performance]
+        QA4[QA-4<br/>Recoverability]
+        QA5[QA-5<br/>Operability]
+    end
+
+    subgraph ADR["Owning ADR"]
+        ADR1[ADR-1<br/>Outbox]
+        ADR2[ADR-2<br/>Reservation]
+    end
+
+    R1 --> QA1
+    R1 --> ADR1
+    R2 --> QA1
+    R2 --> QA3
+    R2 --> ADR1
+    R3 --> QA2
+    R3 --> ADR1
+    R4 -. honest scope cut .-> QA3
+    R5 --> QA5
+    R5 --> ADR1
+
+    QA4 -.- ADR2
+
+    style R2 fill:#ffd6d6,stroke:#c00,color:#700,font-weight:bold
+    style QA1 fill:#fff7d6
+    style QA4 fill:#fff7d6

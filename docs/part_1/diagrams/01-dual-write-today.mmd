@@ -1,0 +1,22 @@
+sequenceDiagram
+    autonumber
+    participant Caller as PlaceOrderAsync
+    participant Repo as EntityRepository
+    participant DB as nopCommerce DB
+    participant Pub as IEventPublisher
+    participant Bus as RabbitMQ<br/>(future)
+
+    Caller->>Repo: InsertAsync(order)
+    Repo->>DB: _dataProvider.InsertEntityAsync(order)
+    DB-->>Repo: committed
+    Note over Repo,DB: TRANSACTION CLOSED HERE<br/>(EntityRepository.cs:345)
+
+    rect rgb(255, 235, 235)
+    Note right of Repo: crash / timeout / pod restart here<br/>= order in DB, broker never told
+    end
+
+    Repo->>Pub: EntityInsertedAsync(order)
+    Pub->>Bus: (hypothetical RabbitMQ publish)
+    Bus-->>Pub: ack
+    Pub-->>Repo: done
+    Repo-->>Caller: return
