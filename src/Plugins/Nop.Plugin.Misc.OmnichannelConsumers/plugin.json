@@ -1,0 +1,11 @@
+{
+  "Group": "Misc",
+  "FriendlyName": "Omnichannel Consumers",
+  "SystemName": "Misc.OmnichannelConsumers",
+  "Version": "1.00.0",
+  "SupportedVersions": [ "5.00" ],
+  "Author": "AS2 Team",
+  "DisplayOrder": 2,
+  "FileName": "Nop.Plugin.Misc.OmnichannelConsumers.dll",
+  "Description": "Monolith-side RabbitMQ subscribers (StockReserved, ReservationRejected, StockLevelChanged, ShipmentDispatched) and the Compensated order-state transition that closes the optimistic-acceptance loop opened by Misc.OmnichannelOutbox."
+}
