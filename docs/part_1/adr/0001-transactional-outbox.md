@@ -1,7 +1,7 @@
 # ADR-1 — Reliable cross-context messaging via Transactional Outbox
 
-**Status:** Accepted · **Date:** 2026-05-03 · **Author:** Person 4
-**Related:** [QA-1 (availability)](../../person2/quality-attribute-scenarios.md#qa-1--availability-mandatory-pressure-point), [QA-3 (performance)](../../person2/quality-attribute-scenarios.md#qa-3--performance-order-placement-throughput), [Iteration 1](../../person3/add-framework.md#iteration-1--decouple-order-placement-from-inventory), [Risk R1, R2](../risk-plan.md), [Feasibility spike](../feasibility-spike.md)
+**Status:** Accepted · **Date:** 2026-05-03 · 
+**Related:** [QA-1 (availability)](../04-quality-attribute-scenarios.md#qa-1--availability-mandatory-pressure-point), [QA-3 (performance)](../04-quality-attribute-scenarios.md#qa-3--performance-order-placement-throughput), [Iteration 1](../05-add-framework.md#iteration-1--decouple-order-placement-from-inventory), [Risk R1, R2](../risk-plan.md), [Feasibility spike](../feasibility-spike.md)
 
 ---
 
@@ -32,14 +32,14 @@ Introduce a **transactional outbox** inside the nopCommerce database.
 1. Add an `OutboxMessage` table (`Id`, `MessageType`, `Payload`, `OccurredOnUtc`, `DispatchedOnUtc`, `Attempts`) via a FluentMigrator migration shipped with a new plugin `Nop.Plugin.Misc.OmnichannelOutbox`.
 2. The plugin's `INopStartup` registers a **decorator over `IOrderProcessingService`** that wraps the order-creation section of `PlaceOrderAsync` in `using var ts = new TransactionScope(TransactionScopeAsyncFlowOption.Enabled)` and writes the corresponding `OrderPlaced` outbox row inside the same scope as the `Order` insert.
 3. The plugin also registers a **wrapping `IEventPublisher`** that, for a **whitelisted set of event types** (`OrderPlaced`, `OrderConfirmed`, shipment events, `StockReserved`, `ReservationRejected`, `StockLevelChanged`), writes an outbox row instead of (or in addition to) calling in-process consumers. All other events pass through unchanged — this keeps existing plugins (Brevo, Omnisend, …) untouched (see [Risk R1](../risk-plan.md)).
-4. An `IScheduleTask` **outbox dispatcher** polls the table on a 5–10 s cadence, publishes undispatched rows to RabbitMQ, marks them dispatched on broker ack, and increments `Attempts` on failure. Permanent failures (`Attempts > N`) move to a dead-letter view for manual inspection. Cadence is documented under [QA-2 propagation target](../../person2/quality-attribute-scenarios.md#qa-2--consistency-stock-visibility) and [Risk R3](../risk-plan.md).
+4. An `IScheduleTask` **outbox dispatcher** polls the table on a 5–10 s cadence, publishes undispatched rows to RabbitMQ, marks them dispatched on broker ack, and increments `Attempts` on failure. Permanent failures (`Attempts > N`) move to a dead-letter view for manual inspection. Cadence is documented under [QA-2 propagation target](../04-quality-attribute-scenarios.md#qa-2--consistency-stock-visibility) and [Risk R3](../risk-plan.md).
 5. Consumers are **idempotent on `EventId`**. Delivery is **at-least-once** — exactly-once is not promised because we do not have a 2PC across DB and broker.
 
 ## Alternatives considered
 
 ### A. Direct RabbitMQ publish from `IConsumer<OrderPlacedEvent>` — REJECTED
 
-The path of least implementation effort: register an `IConsumer<OrderPlacedEvent>` that opens a RabbitMQ channel and publishes the event. Person 1's analysis already identifies this as "the most viable path" *if* you assume the event publication is reliable. It is not. The exact dual-write of `EntityRepository.cs:341-350` reappears one level up: `OrderProcessingService.PlaceOrderAsync` commits the order, then publishes `OrderPlacedEvent`, then the consumer publishes to RabbitMQ. A crash, a network blip, a broker pause anywhere after the order commit loses the message permanently. The whole point of the architectural bet — *the warehouse is told, eventually* — collapses.
+The path of least implementation effort: register an `IConsumer<OrderPlacedEvent>` that opens a RabbitMQ channel and publishes the event. The current-state analysis already identifies this as "the most viable path" *if* you assume the event publication is reliable. It is not. The exact dual-write of `EntityRepository.cs:341-350` reappears one level up: `OrderProcessingService.PlaceOrderAsync` commits the order, then publishes `OrderPlacedEvent`, then the consumer publishes to RabbitMQ. A crash, a network blip, a broker pause anywhere after the order commit loses the message permanently. The whole point of the architectural bet — *the warehouse is told, eventually* — collapses.
 
 ### B. Two-phase commit / XA across DB and broker — REJECTED
 
@@ -58,7 +58,7 @@ Open the broker connection inside the order's DB transaction and publish before 
 **Positive:**
 - The order acceptance path is decoupled from the broker. A RabbitMQ outage accumulates outbox rows; a recovered broker drains them. QA-1's 99 %-success-during-15-min-outage target becomes a property of the system, not a hope.
 - Existing nopCommerce extension points (`INopStartup`, `IConsumer<T>`, `IScheduleTask`, `IEventPublisher`) carry the entire design — no core fork.
-- The outbox table itself is the operator-visible audit trail: every cross-context message has a row with timestamps and dispatch status. This satisfies a chunk of [QA-5 (operability)](../../person2/quality-attribute-scenarios.md#qa-5--operability-optional-5th-suggested-addition) at no extra cost.
+- The outbox table itself is the operator-visible audit trail: every cross-context message has a row with timestamps and dispatch status. This satisfies a chunk of [QA-5 (operability)](../04-quality-attribute-scenarios.md#qa-5--operability-optional-5th-suggested-addition) at no extra cost.
 
 **Negative / new operational concerns:**
 - Delivery is **at-least-once**. Every consumer must be idempotent on `EventId`. This is a hard rule, not a guideline; consumers that violate it will double-process on redelivery.
@@ -69,4 +69,4 @@ Open the broker connection inside the order's DB transaction and publish before 
 
 **Carries forward into:**
 - [ADR-2 (optimistic reservation)](0002-optimistic-reservation.md) — the `OrderPlaced` row in the outbox is what the Inventory service consumes.
-- [Iteration 2 of the ADD plan](../../person3/add-framework.md#iteration-2--stock-visibility-projection) — the stock-view projection consumes `StockLevelChanged` from the same outbox.
+- [Iteration 2 of the ADD plan](../05-add-framework.md#iteration-2--stock-visibility-projection) — the stock-view projection consumes `StockLevelChanged` from the same outbox.

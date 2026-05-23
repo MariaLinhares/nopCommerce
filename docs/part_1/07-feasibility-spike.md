@@ -1,8 +1,8 @@
 # Feasibility Spike — Does `PlaceOrderAsync` Run Inside an Ambient `TransactionScope`?
 
 **Scenario:** C — Omnichannel Commerce Core (VerdeMart Retail)
-**Author:** Person 4 · **Status:** RESOLVED · **Date:** 2026-05-03
-**Grounded in:** [docs/shared/nopcommerce-context-pack.md](../shared/nopcommerce-context-pack.md) (R2)
+**Status:** RESOLVED · **Date:** 2026-05-03
+**Grounded in:** [docs/shared/nopcommerce-context-pack.md](README.md) (R2)
 
 ---
 
@@ -12,7 +12,7 @@
 
 This is the single load-bearing assumption behind [ADR-1 (transactional outbox)](adr/0001-transactional-outbox.md). If the answer is **yes**, our outbox row written via `_outboxRepository.InsertAsync(...)` enrolls in the same scope as the `Order` insert and we get the exactly-once-publish-relative-to-order guarantee for free. If **no**, we must wrap the relevant section of `PlaceOrderAsync` in a `TransactionScope` ourselves before the outbox guarantee holds.
 
-[Person 1's current-state analysis (§2)](../person1-analysis.pdf) states that `EntityRepository<TEntity>` is *"backed by `TransactionScope` for atomic operations"*. The [context pack §5 — Risk R2](../shared/nopcommerce-context-pack.md#5-what-this-means-for-each-of-us) flags this as unverified and the most important question Person 4 must answer. This document resolves the conflict.
+[The current-state analysis (§2)](../01-current-state-analysis.pdf) states that `EntityRepository<TEntity>` is *"backed by `TransactionScope` for atomic operations"*. The [context pack §5 — Risk R2](README.md#5-what-this-means-for-each-of-us) flags this as unverified and the most important question to answer. This document resolves the conflict.
 
 ## 2. Method
 
@@ -149,7 +149,7 @@ Two findings of architectural relevance:
 
 **`PlaceOrderAsync` does NOT run inside an ambient `TransactionScope`.** Every repository call inside it is its own commit point. The `OrderPlacedEvent` is published *after* the order, the order items, the inventory mutations, the discount-usage rows, and the gift-card-usage rows have all been committed independently to the database. The runtime probe confirms the C# semantics: every observation point in the bare-scenario call chain reports `Transaction.Current = null`; the wrap does fix it, end-to-end across `await` boundaries, when (and only when) `TransactionScopeAsyncFlowOption.Enabled` is set.
 
-Person 1's PDF claim that *"`EntityRepository<TEntity>` [is] backed by `TransactionScope`"* is **partially correct**: only the bulk and predicate-delete variants wrap in a scope, and even those publish their events *after* `Complete()`. The single-entity `InsertAsync`/`UpdateAsync`/`DeleteAsync` paths — which are the ones `PlaceOrderAsync` actually exercises — have no scope at all.
+The current-state analysis claim that *"`EntityRepository<TEntity>` [is] backed by `TransactionScope`"* is **partially correct**: only the bulk and predicate-delete variants wrap in a scope, and even those publish their events *after* `Complete()`. The single-entity `InsertAsync`/`UpdateAsync`/`DeleteAsync` paths — which are the ones `PlaceOrderAsync` actually exercises — have no scope at all.
 
 Risk **R2** in the context pack is **CONFIRMED**.
 
@@ -159,7 +159,7 @@ This shapes [ADR-1](adr/0001-transactional-outbox.md) and [the risk plan](risk-p
 
 1. The outbox-in-same-transaction guarantee is **not free**. Writing `_outboxRepository.InsertAsync(message)` inside `placeOrder(...)` will commit independently of the `Order` insert, and a crash between the two leaves the system in exactly the dual-write state we are trying to escape.
 2. The plugin must therefore introduce an explicit `using var ts = new TransactionScope(TransactionScopeAsyncFlowOption.Enabled)` around the relevant section of `PlaceOrderAsync`. The cleanest seam is a **decorator over `IOrderProcessingService`** registered by the plugin's `INopStartup`, wrapping the call in a `TransactionScope` before delegating. This avoids forking core.
-3. Honest fallback if scope-wrapping proves brittle in implementation: design the consumers to be **idempotent on event ID** and accept **at-least-once delivery**. QA-3's response measure ([quality-attribute-scenarios.md §QA-3](../person2/quality-attribute-scenarios.md#qa-3--performance-order-placement-throughput)) already calls this caveat out.
+3. Honest fallback if scope-wrapping proves brittle in implementation: design the consumers to be **idempotent on event ID** and accept **at-least-once delivery**. QA-3's response measure ([quality-attribute-scenarios.md §QA-3](04-quality-attribute-scenarios.md#qa-3--performance-order-placement-throughput)) already calls this caveat out.
 
 ## 6. What this spike did NOT test
 
@@ -176,5 +176,5 @@ Honesty up front, since the assignment grades evidence packs on *"known limitati
 - [Source — `OrderProcessingService.cs`](../../nopCommerce/src/Libraries/Nop.Services/Orders/OrderProcessingService.cs) — lines 1571-1656 (`PlaceOrderAsync`), 1279-1344 (`MoveShoppingCartItemsToOrderItemsAsync`), 1337 (`AdjustInventoryAsync` call site), 1625 (`OrderPlacedEvent` publish after commit).
 - **Spike code:** [`assignment-2/spike/TransactionScopeSpike/Program.cs`](../../spike/TransactionScopeSpike/Program.cs) — runnable: `cd assignment-2/spike/TransactionScopeSpike && dotnet run -c Release`.
 - **Spike output:** [`assignment-2/spike/spike-output.txt`](../../spike/spike-output.txt).
-- [Context pack §3.3 — the dual-write evidence](../shared/nopcommerce-context-pack.md) — same `EntityRepository.cs:341-350` snippet.
-- [QA-3 — performance scenario with the explicit TS caveat](../person2/quality-attribute-scenarios.md#qa-3--performance-order-placement-throughput).
+- [Context pack §3.3 — the dual-write evidence](README.md) — same `EntityRepository.cs:341-350` snippet.
+- [QA-3 — performance scenario with the explicit TS caveat](04-quality-attribute-scenarios.md#qa-3--performance-order-placement-throughput).

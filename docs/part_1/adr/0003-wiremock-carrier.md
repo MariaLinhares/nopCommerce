@@ -1,13 +1,13 @@
 # ADR-3 — Carrier surrogate via WireMock
 
-**Status:** Accepted · **Date:** 2026-05-03 · **Author:** Person 4
-**Related:** [QA-1 pressure point precedent](../../person2/quality-attribute-scenarios.md#qa-1--availability-mandatory-pressure-point), [Iteration 3](../../person3/add-framework.md#iteration-3--shipping-integration-and-compensation), [Bounded contexts §2.1 — Shipping](../../person2/bounded-contexts.md)
+**Status:** Accepted · **Date:** 2026-05-03 · 
+**Related:** [QA-1 pressure point precedent](../04-quality-attribute-scenarios.md#qa-1--availability-mandatory-pressure-point), [Iteration 3](../05-add-framework.md#iteration-3--shipping-integration-and-compensation), [Bounded contexts §2.1 — Shipping](../02-bounded-contexts.md)
 
 ---
 
 ## Context
 
-The [Shipping / Fulfillment context](../../person2/bounded-contexts.md) is one of two extracted services in the target architecture. It must be exercisable under **carrier degradation** — slow responses, 5xx, contradictory states — because that is the runtime challenge we promise to demonstrate. The assignment scenario brief explicitly allows *"a surrogate simulator, stub, or mock service if that choice preserves the pressure, behavior, and architectural consequences of the scenario."*
+The [Shipping / Fulfillment context](../02-bounded-contexts.md) is one of two extracted services in the target architecture. It must be exercisable under **carrier degradation** — slow responses, 5xx, contradictory states — because that is the runtime challenge we promise to demonstrate. The assignment scenario brief explicitly allows *"a surrogate simulator, stub, or mock service if that choice preserves the pressure, behavior, and architectural consequences of the scenario."*
 
 The current carrier integration in nopCommerce sets the precedent we are evolving away from. [`Nop.Plugin.Shipping.UPS/Services/UPSService.cs`](../../../nopCommerce/src/Plugins/Nop.Plugin.Shipping.UPS/Services/UPSService.cs) makes synchronous in-request HTTP calls to UPS via `IHttpClientFactory`, with no retry, no circuit breaker, and no background queue ([context pack §4.5](../../shared/nopcommerce-context-pack.md)). A slow UPS = a slow checkout. The architectural pressure of this design is **identical in shape** to the warehouse pressure of QA-1: a synchronous in-request external call that blocks the customer-visible path.
 

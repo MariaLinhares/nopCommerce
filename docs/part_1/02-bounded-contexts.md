@@ -1,8 +1,8 @@
 # Bounded Contexts
 
 **Scenario:** C — Omnichannel Commerce Core (VerdeMart Retail)
-**Author:** Person 2 · **Status:** DRAFT v2 · **Due:** 29 Apr 2026
-**Grounded in:** [docs/shared/nopcommerce-context-pack.md](../shared/nopcommerce-context-pack.md)
+**Status:** DRAFT v2 · **Due:** 29 Apr 2026
+**Grounded in:** [docs/shared/nopcommerce-context-pack.md](README.md)
 **See also:** [context-map.md](context-map.md) · [quality-attribute-scenarios.md](quality-attribute-scenarios.md) · [README.md](README.md)
 
 ---
@@ -13,7 +13,7 @@ VerdeMart's commerce core (nopCommerce) must coordinate with operational systems
 
 We model **five bounded contexts**. Three live inside the nopCommerce monolith (with clarified internal boundaries); two are extracted to make ownership and failure modes explicit.
 
-The investigation of the cloned nopCommerce codebase (commit `ed4c133`) confirms that the contexts below align with seams that already exist in the code — the model is **not invented**, it makes existing concepts explicit. Specific code citations appear inline below and are consolidated in the [context pack](../shared/nopcommerce-context-pack.md).
+The investigation of the cloned nopCommerce codebase (commit `ed4c133`) confirms that the contexts below align with seams that already exist in the code — the model is **not invented**, it makes existing concepts explicit. Specific code citations appear inline below and are consolidated in the [context pack](README.md).
 
 ---
 

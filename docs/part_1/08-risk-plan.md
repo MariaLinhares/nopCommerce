@@ -1,8 +1,8 @@
 # Risk Plan
 
 **Scenario:** C — Omnichannel Commerce Core (VerdeMart Retail)
-**Author:** Person 4 · **Status:** v1 (post-spike) · **Date:** 2026-05-03
-**Grounded in:** [docs/shared/nopcommerce-context-pack.md §5](../shared/nopcommerce-context-pack.md) — formalises R1–R4; adds R5.
+**Status:** v1 (post-spike) · **Date:** 2026-05-03
+**Grounded in:** [docs/shared/nopcommerce-context-pack.md §5](README.md) — formalises R1–R4; adds R5.
 
 Likelihood / Impact use a deliberately coarse **H / M / L** scale. Coarseness is honest: we do not have production telemetry from VerdeMart and inventing percentages would be theatre. The point of the table is to make our top risks explicit and to tie each one to a validation lever we control.
 
@@ -18,11 +18,11 @@ Likelihood / Impact use a deliberately coarse **H / M / L** scale. Coarseness is
 
 ## How risks tie to the QA scenarios
 
-- **R1, R2** are reliability risks that, if unmitigated, void [QA-1 (availability)](../person2/quality-attribute-scenarios.md#qa-1--availability-mandatory-pressure-point) — a lost `OrderPlaced` event means the warehouse is never told about an accepted order.
-- **R2** also voids [QA-3 (performance)](../person2/quality-attribute-scenarios.md#qa-3--performance-order-placement-throughput)'s exactly-once language; the spike has already forced us to soften that to "at-least-once with idempotent consumers".
-- **R3** is the direct threat to [QA-2 (consistency)](../person2/quality-attribute-scenarios.md#qa-2--consistency-stock-visibility) — propagation lag exceeding 30 s P95 is exactly what the polling cadence controls.
+- **R1, R2** are reliability risks that, if unmitigated, void [QA-1 (availability)](04-quality-attribute-scenarios.md#qa-1--availability-mandatory-pressure-point) — a lost `OrderPlaced` event means the warehouse is never told about an accepted order.
+- **R2** also voids [QA-3 (performance)](04-quality-attribute-scenarios.md#qa-3--performance-order-placement-throughput)'s exactly-once language; the spike has already forced us to soften that to "at-least-once with idempotent consumers".
+- **R3** is the direct threat to [QA-2 (consistency)](04-quality-attribute-scenarios.md#qa-2--consistency-stock-visibility) — propagation lag exceeding 30 s P95 is exactly what the polling cadence controls.
 - **R4** is a scope-cut risk, not a failure-mode risk. Calling it out keeps the architecture report defensible against the "claims of scalability without evidence" failure mode the assignment §5 explicitly penalises.
-- **R5** is operability — pairs with [QA-5 (operability)](../person2/quality-attribute-scenarios.md#qa-5--operability-optional-5th-suggested-addition).
+- **R5** is operability — pairs with [QA-5 (operability)](04-quality-attribute-scenarios.md#qa-5--operability-optional-5th-suggested-addition).
 
 ## What is NOT in this table (and why)
 

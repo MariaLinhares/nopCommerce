@@ -1,8 +1,8 @@
 # Chosen Framework: ADD (Attribute-Driven Design)
 
 **Scenario:** C — Omnichannel Commerce Core (VerdeMart Retail)
-**Author:** Person 3 · **Status:** DRAFT v1
-**Grounded in:** [current-state analysis](../../analysis.pdf), [QA scenarios](../person2/quality-attribute-scenarios.md), [bounded contexts](../person2/bounded-contexts.md)
+**Status:** DRAFT v1
+**Grounded in:** [current-state analysis](../../analysis.pdf), [QA scenarios](04-quality-attribute-scenarios.md), [bounded contexts](02-bounded-contexts.md)
 
 ---
 
@@ -10,16 +10,16 @@
 
 We chose Attribute-Driven Design because it starts from exactly what we already have: a set of quality attribute scenarios, a known system with clear constraints, and a need to evolve incrementally rather than redesign from scratch. ADD takes these inputs and produces architectural structures through iterative decomposition — each iteration driven by a subset of QA scenarios, each producing traceable decisions.
 
-We considered ACDM, but its early stages (discover drivers, establish baseline) duplicate work that Person 1 and Person 2 have already completed. Retrofitting their deliverables into ACDM's prescribed phases would be artificial. We also considered ADM/TOGAF, but the governance overhead is disproportionate — we are evolving one system with two extracted services, not running an enterprise-wide transformation.
+We considered ACDM, but its early stages (discover drivers, establish baseline) duplicate work that the team has already completed. Retrofitting their deliverables into ACDM's prescribed phases would be artificial. We also considered ADM/TOGAF, but the governance overhead is disproportionate — we are evolving one system with two extracted services, not running an enterprise-wide transformation.
 
-ADD does not cover transition planning or experimentation. We address those gaps through the evolution roadmap and Person 4's feasibility spike, respectively.
+ADD does not cover transition planning or experimentation. We address those gaps through the evolution roadmap and the feasibility spike, respectively.
 
 ---
 
 ## Inputs
 
 - **Business drivers:** VerdeMart needs nopCommerce to act as a commerce core, not an isolated storefront. Cross-channel visibility and resilience under surrounding-system degradation are the primary pressures.
-- **Quality attribute scenarios:** QA-1 (availability), QA-2 (consistency), QA-3 (performance), QA-4 (recoverability), QA-5 (operability) — defined in [quality-attribute-scenarios.md](../person2/quality-attribute-scenarios.md).
+- **Quality attribute scenarios:** QA-1 (availability), QA-2 (consistency), QA-3 (performance), QA-4 (recoverability), QA-5 (operability) — defined in [quality-attribute-scenarios.md](04-quality-attribute-scenarios.md).
 - **Constraints:** no shared database across extracted boundaries, at least one async workflow, at least one explicit reliability mechanism, extension via nopCommerce's plugin system.
 - **Existing architecture:** modular monolith with synchronous stock decrement at order placement, in-process event system with no durability, no message broker — see [current-state analysis](../../analysis.pdf), pressure points P1–P5.
 

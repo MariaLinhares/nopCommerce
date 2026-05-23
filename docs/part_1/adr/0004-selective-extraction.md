@@ -1,7 +1,7 @@
 # ADR-4 — Selective extraction: Inventory + Shipping out, Order Management + Catalog stay
 
-**Status:** Accepted · **Date:** 2026-05-03 · **Author:** Person 4
-**Related:** [Bounded contexts](../../person2/bounded-contexts.md), [Target architecture](../../person3/target-architecture.md), [Assignment §3 scope clause](../../Group%20Assignment%20-%20Final%20Assignment.pdf), [ADR-1](0001-transactional-outbox.md), [ADR-2](0002-optimistic-reservation.md)
+**Status:** Accepted · **Date:** 2026-05-03 · 
+**Related:** [Bounded contexts](../02-bounded-contexts.md), [Target architecture](../06-target-architecture.md), [Assignment §3 scope clause](../../Group%20Assignment%20-%20Final%20Assignment.pdf), [ADR-1](0001-transactional-outbox.md), [ADR-2](0002-optimistic-reservation.md)
 
 ---
 
@@ -33,7 +33,7 @@ The decision is *selective* on purpose: each extraction is justified by a specif
 
 ### A. Full microservices decomposition (Order, Catalog, Customer, Cart, Payment all out) — REJECTED
 
-The maximalist read of "modernize nopCommerce". Pros: clean bounded contexts, independent scaling, fashionable. Cons: (1) **violates the assignment's explicit scope clause** ("not a microservices rewrite"); (2) no QA scenario in [QA-1..QA-5](../../person2/quality-attribute-scenarios.md) demands extracting Order Management, Catalog, Customer, Cart, or Payment — extracting them would be ideology, not architecture; (3) the team has 2 days until checkpoint and ~4 weeks to final delivery — full decomposition is undeliverable; (4) the lecturer's deck (slides 02.02 p.46) explicitly warns that choreography across many services *"distributes accountability — that's the cost"*. Rejected as scope inflation that the assignment grader penalises directly.
+The maximalist read of "modernize nopCommerce". Pros: clean bounded contexts, independent scaling, fashionable. Cons: (1) **violates the assignment's explicit scope clause** ("not a microservices rewrite"); (2) no QA scenario in [QA-1..QA-5](../04-quality-attribute-scenarios.md) demands extracting Order Management, Catalog, Customer, Cart, or Payment — extracting them would be ideology, not architecture; (3) the team has 2 days until checkpoint and ~4 weeks to final delivery — full decomposition is undeliverable; (4) the lecturer's deck (slides 02.02 p.46) explicitly warns that choreography across many services *"distributes accountability — that's the cost"*. Rejected as scope inflation that the assignment grader penalises directly.
 
 ### B. Keep everything in the monolith, add only the outbox — REJECTED
 
@@ -49,7 +49,7 @@ Combine Inventory and Shipping into one extracted service, since both are "non-s
 
 ### E. Extract Catalog as a read-only stock-view service — REJECTED
 
-The stock-view projection (Iteration 2 of [the ADD plan](../../person3/add-framework.md#iteration-2--stock-visibility-projection)) is a genuinely separate concern. Pros: clean projection-as-a-service shape; recognised pattern. Cons: the storefront reads stock visibility on **every product page**. An extra network hop on every product impression is a real performance cost for a marginal architectural win. Person 3's target architecture explicitly keeps the projection in-process for this reason. Rejected on performance grounds.
+The stock-view projection (Iteration 2 of [the ADD plan](../05-add-framework.md#iteration-2--stock-visibility-projection)) is a genuinely separate concern. Pros: clean projection-as-a-service shape; recognised pattern. Cons: the storefront reads stock visibility on **every product page**. An extra network hop on every product impression is a real performance cost for a marginal architectural win. The target architecture explicitly keeps the projection in-process for this reason. Rejected on performance grounds.
 
 ## Consequences
 

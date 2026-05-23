@@ -1,8 +1,8 @@
 # Context Map
 
 **Scenario:** C — Omnichannel Commerce Core (VerdeMart Retail)
-**Author:** Person 2 · **Status:** DRAFT v2 · **Due:** 29 Apr 2026
-**Grounded in:** [docs/shared/nopcommerce-context-pack.md](../shared/nopcommerce-context-pack.md)
+**Status:** DRAFT v2 · **Due:** 29 Apr 2026
+**Grounded in:** [docs/shared/nopcommerce-context-pack.md](README.md)
 **See also:** [bounded-contexts.md](bounded-contexts.md) · [quality-attribute-scenarios.md](quality-attribute-scenarios.md) · [README.md](README.md)
 
 ---

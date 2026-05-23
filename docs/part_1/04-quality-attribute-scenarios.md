@@ -1,15 +1,15 @@
 # Quality Attribute Scenarios
 
 **Scenario:** C — Omnichannel Commerce Core (VerdeMart Retail)
-**Author:** Person 2 · **Status:** DRAFT v2 · **Due:** 29 Apr 2026
-**Grounded in:** [docs/shared/nopcommerce-context-pack.md](../shared/nopcommerce-context-pack.md)
+**Status:** DRAFT v2 · **Due:** 29 Apr 2026
+**Grounded in:** [docs/shared/nopcommerce-context-pack.md](README.md)
 **See also:** [bounded-contexts.md](bounded-contexts.md) · [context-map.md](context-map.md) · [README.md](README.md)
 
 ---
 
 Format: Source / Stimulus / Artifact / Environment / Response / Response Measure.
 
-All numeric measures are **starting targets** to be validated by Person 4's feasibility spike and refined before final delivery.
+All numeric measures are **starting targets** to be validated by the feasibility spike and refined before final delivery.
 
 ---
 
@@ -54,7 +54,7 @@ All numeric measures are **starting targets** to be validated by Person 4's feas
 | **Response** | Order is persisted, outbox row written in same DB transaction, HTTP 201 returned to customer. Async dispatch of `OrderPlaced` happens out of band. |
 | **Response Measure** | P95 end-to-end order placement latency ≤ **800 ms** at sustained **50 orders/minute**. P99 ≤ **1.5 s**. No order loss, no duplicate orders (idempotency key on the outbox dispatcher). |
 
-**Grounded in code — and an open caveat:** the order placement path today is [`OrderProcessingService.PlaceOrderAsync` (line 1567)](../../nopCommerce/src/Libraries/Nop.Services/Orders/OrderProcessingService.cs#L1567), which calls 30+ injected services and synchronously decrements stock at [line 1333](../../nopCommerce/src/Libraries/Nop.Services/Orders/OrderProcessingService.cs#L1333). Our redesign **removes** the synchronous stock call from this path (replaced by an outbox write), which is a latency *improvement*, not a regression. **Caveat:** the investigation flagged that this method does not appear to run inside an explicit `TransactionScope`, so the outbox-in-same-transaction guarantee depends on Person 4's spike (Risk R2 in the context pack) confirming we can wrap the relevant section. If the spike shows otherwise, the response measure assumes "at-least-once delivery with idempotent consumers" instead of "exactly-once."
+**Grounded in code — and an open caveat:** the order placement path today is [`OrderProcessingService.PlaceOrderAsync` (line 1567)](../../nopCommerce/src/Libraries/Nop.Services/Orders/OrderProcessingService.cs#L1567), which calls 30+ injected services and synchronously decrements stock at [line 1333](../../nopCommerce/src/Libraries/Nop.Services/Orders/OrderProcessingService.cs#L1333). Our redesign **removes** the synchronous stock call from this path (replaced by an outbox write), which is a latency *improvement*, not a regression. **Caveat:** the investigation flagged that this method does not appear to run inside an explicit `TransactionScope`, so the outbox-in-same-transaction guarantee depends on the feasibility spike (Risk R2 in the context pack) confirming we can wrap the relevant section. If the spike shows otherwise, the response measure assumes "at-least-once delivery with idempotent consumers" instead of "exactly-once."
 
 **Default-deployment caveat:** out of the box, nopCommerce uses an in-process `MemoryDistributedCacheManager` and **cannot horizontally scale** without configuring Redis ([ServiceCollectionExtensions.cs:197-235](../../nopCommerce/src/Presentation/Nop.Web.Framework/Infrastructure/Extensions/ServiceCollectionExtensions.cs#L197)). For the demo, single-instance is the honest target; multi-instance throughput claims would require Redis, which we should call out as future work, not part of this assignment.
 
@@ -71,7 +71,7 @@ All numeric measures are **starting targets** to be validated by Person 4's feas
 | **Response** | Order Management consumes `ReservationRejected`, transitions order to `Compensated`, releases payment authorization, sends customer notification. The compensation is itself idempotent — replay of the same rejection event has no additional effect. |
 | **Response Measure** | 100% of rejected orders reach `Compensated` state within **2 minutes** of the rejection event, with payment release confirmed and a customer notification dispatched. Audit trail records every state transition with timestamp and trigger. |
 
-**Grounded in code:** the existing reservation/booking lifecycle ([`ProductService.ReserveInventoryAsync` line 391](../../nopCommerce/src/Libraries/Nop.Services/Catalog/ProductService.cs#L391) and [`BookReservedInventoryAsync` line 1804](../../nopCommerce/src/Libraries/Nop.Services/Catalog/ProductService.cs#L1804)) gives us a natural compensation primitive: a rejection means the reservation is released without ever being booked. The order state machine today only handles the happy path implicitly through `CheckAndSaveOrderStatusAsync`; the new `Compensated` state and its transition need to be added explicitly (P3's target architecture). Idempotency is enforced via a deduplication key on the `ReservationRejected` event ID, stored alongside the order.
+**Grounded in code:** the existing reservation/booking lifecycle ([`ProductService.ReserveInventoryAsync` line 391](../../nopCommerce/src/Libraries/Nop.Services/Catalog/ProductService.cs#L391) and [`BookReservedInventoryAsync` line 1804](../../nopCommerce/src/Libraries/Nop.Services/Catalog/ProductService.cs#L1804)) gives us a natural compensation primitive: a rejection means the reservation is released without ever being booked. The order state machine today only handles the happy path implicitly through `CheckAndSaveOrderStatusAsync`; the new `Compensated` state and its transition need to be added explicitly (the target architecture). Idempotency is enforced via a deduplication key on the `ReservationRejected` event ID, stored alongside the order.
 
 ---
 
@@ -92,12 +92,12 @@ All numeric measures are **starting targets** to be validated by Person 4's feas
 
 ---
 
-## Traceability hooks for Person 3 and Person 4
+## Traceability hooks for ADRs and target architecture
 
 These are deliberate hooks so the downstream work can cite this document directly:
 
-- **QA-1** drives the **outbox pattern** decision (Person 4 ADR #1) and the **optimistic reservation** decision (Person 4 ADR #2).
-- **QA-2** drives the choice of **event-driven stock projection** vs. synchronous query (Person 3 target architecture).
+- **QA-1** drives the **outbox pattern** decision (ADR-1) and the **optimistic reservation** decision (ADR-2).
+- **QA-2** drives the choice of **event-driven stock projection** vs. synchronous query (target architecture).
 - **QA-3** drives the **transactional outbox** design (no dual-write) and informs DB sizing.
 - **QA-4** drives the **compensation** branch in the order state machine and the **idempotency** requirement on consumers.
 - **No-shared-DB** rule across contexts (see [context-map.md §3](context-map.md#3-data-ownership-rules)) is the architectural constraint that forces the extracted Inventory and Shipping services to own their data.

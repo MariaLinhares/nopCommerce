@@ -4,7 +4,7 @@
 **Surrounding systems:** OpenBoxes (WMS), WireMock (carrier), RabbitMQ
 **Reliability mechanism:** Transactional outbox + retry
 
-For the full investigation, see [shared/nopcommerce-context-pack.md](shared/nopcommerce-context-pack.md). For per-person deliverables: [Person 2](person2/README.md), [Person 3](person3/target-architecture.md), [Person 4](person4/README.md).
+See deliverables: [bounded-contexts](02-bounded-contexts.md), [context-map](03-context-map.md), [QA scenarios](04-quality-attribute-scenarios.md), [ADD framework](05-add-framework.md), [target architecture](06-target-architecture.md), [feasibility spike](07-feasibility-spike.md), [risk plan](08-risk-plan.md), [ADRs](adr/).
 
 ---
 
@@ -19,7 +19,7 @@ That single change — and everything it pulls along — *is* the assignment.
 ## The 5 facts that drive every decision
 
 1. **Reservation already exists** — [`ProductWarehouseInventory.ReservedQuantity`](../nopCommerce/src/Libraries/Nop.Core/Domain/Catalog/ProductWarehouseInventory.cs#L26). We standardize an existing concept, not invent one.
-2. **The tangle is one line** — [`OrderProcessingService.cs:1337`](../nopCommerce/src/Libraries/Nop.Services/Orders/OrderProcessingService.cs#L1337) calls `AdjustInventoryAsync` synchronously inside `MoveShoppingCartItemsToOrderItemsAsync`. (Verified by P4 read; context-pack note of `:1333` was approximate.)
+2. **The tangle is one line** — [`OrderProcessingService.cs:1337`](../nopCommerce/src/Libraries/Nop.Services/Orders/OrderProcessingService.cs#L1337) calls `AdjustInventoryAsync` synchronously inside `MoveShoppingCartItemsToOrderItemsAsync`. 
 3. **Dual-write is provable today** — [`EntityRepository.cs:341-350`](../nopCommerce/src/Libraries/Nop.Data/EntityRepository.cs#L341) commits, then publishes. Quote this in ADR #1.
 4. **No existing message broker** — zero refs to RabbitMQ, MassTransit, Hangfire. We're first.
 5. **Plugin + `IScheduleTask` is enough** — outbox dispatcher fits as a normal nopCommerce plugin. No core fork needed.
@@ -51,11 +51,11 @@ That single change — and everything it pulls along — *is* the assignment.
 
 ---
 
-## Top risks (validated by P4 — see [risk-plan.md](person4/risk-plan.md) and [feasibility-spike.md](person4/feasibility-spike.md))
+## Top risks
 
 | # | Risk | Status | Mitigation |
 |---|---|---|---|
-| **R2** | `PlaceOrderAsync` does not run in an ambient `TransactionScope` | **CONFIRMED** by [spike](person4/feasibility-spike.md) — only `EntityRepository` bulk variants wrap, and even those publish events after `Complete()` | Outbox plugin wraps the order-creation section in `TransactionScope` via an `IOrderProcessingService` decorator. Honest fallback: at-least-once + idempotent consumers. See [ADR-1](person4/adr/0001-transactional-outbox.md). |
+| **R2** | `PlaceOrderAsync` does not run in an ambient `TransactionScope` | **CONFIRMED** by [spike](07-feasibility-spike.md) — only `EntityRepository` bulk variants wrap, and even those publish events after `Complete()` | Outbox plugin wraps the order-creation section in `TransactionScope` via an `IOrderProcessingService` decorator. Honest fallback: at-least-once + idempotent consumers. See [ADR-1](adr/0001-transactional-outbox.md). |
 | **R1** | Wrapping `IEventPublisher` globally may collide with unrelated consumers (Brevo, Omnisend, …) | Open | Whitelist a fixed set of cross-context event types; all others pass through unchanged. |
 | **R3** | `IScheduleTask` polling cadence vs. QA-2's 30 s P95 propagation target | Open — Part 2 measurement | Cadence at 5–10 s; measure under k6 load. |
 | **R4** | Default cache is in-memory → no horizontal scaling | Acknowledged scope cut | Single-instance demo; Redis is future work. |

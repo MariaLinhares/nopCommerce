@@ -1,7 +1,7 @@
 # Target Architecture
 
 **Scenario:** C — Omnichannel Commerce Core (VerdeMart Retail)
-**Author:** Person 3 · **Status:** DRAFT v1
+**Status:** DRAFT v1
 **Produced by:** ADD iterations 1–3 — see [add-framework.md](add-framework.md) for reasoning
 
 ---
