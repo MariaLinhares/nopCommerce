@@ -121,6 +121,17 @@ public partial interface IOrderProcessingService
     Task CancelOrderAsync(Order order, bool notifyCustomer);
 
     /// <summary>
+    /// Compensates an order rejected downstream (e.g. by the warehouse Inventory service):
+    /// releases payment (Void / RefundOffline), transitions to Compensated, writes an audit
+    /// note tagged with the source EventId, and publishes OrderCompensatedEvent. Idempotent.
+    /// </summary>
+    /// <param name="order">Order</param>
+    /// <param name="sourceEventId">EventId of the inbound rejection event</param>
+    /// <param name="reason">Human-readable rejection reason</param>
+    /// <returns>A task that represents the asynchronous operation</returns>
+    Task CompensateOrderAsync(Order order, Guid sourceEventId, string reason);
+
+    /// <summary>
     /// Gets a value indicating whether order can be marked as authorized
     /// </summary>
     /// <param name="order">Order</param>

@@ -4,6 +4,7 @@ using Nop.Core;
 using Nop.Core.Caching;
 using Nop.Core.Domain.Catalog;
 using Nop.Core.Domain.Common;
+using Nop.Core.Domain.Configuration;
 using Nop.Core.Domain.Customers;
 using Nop.Core.Domain.Directory;
 using Nop.Core.Domain.Discounts;
@@ -84,6 +85,7 @@ public partial class OrderProcessingService : IOrderProcessingService
     protected readonly IWorkContext _workContext;
     protected readonly IWorkflowMessageService _workflowMessageService;
     protected readonly LocalizationSettings _localizationSettings;
+    protected readonly OmnichannelSettings _omnichannelSettings;
     protected readonly OrderSettings _orderSettings;
     protected readonly PaymentSettings _paymentSettings;
     protected readonly RewardPointsSettings _rewardPointsSettings;
@@ -137,6 +139,7 @@ public partial class OrderProcessingService : IOrderProcessingService
         IWorkContext workContext,
         IWorkflowMessageService workflowMessageService,
         LocalizationSettings localizationSettings,
+        OmnichannelSettings omnichannelSettings,
         OrderSettings orderSettings,
         PaymentSettings paymentSettings,
         RewardPointsSettings rewardPointsSettings,
@@ -186,6 +189,7 @@ public partial class OrderProcessingService : IOrderProcessingService
         _workContext = workContext;
         _workflowMessageService = workflowMessageService;
         _localizationSettings = localizationSettings;
+        _omnichannelSettings = omnichannelSettings;
         _orderSettings = orderSettings;
         _paymentSettings = paymentSettings;
         _rewardPointsSettings = rewardPointsSettings;
@@ -1085,11 +1089,30 @@ public partial class OrderProcessingService : IOrderProcessingService
             }
         }
 
+        //Compensated: optimistic acceptance was rolled back because a downstream
+        //dependency (warehouse reservation) failed. Reuse the cancelled-customer
+        //email template — semantically the customer needs the same information
+        //(order will not be fulfilled, payment released). A dedicated localized
+        //template can replace this without changing the call site.
+        if (prevOrderStatus != OrderStatus.Compensated &&
+            os == OrderStatus.Compensated
+            && notifyCustomer)
+        {
+            var orderCompensatedCustomerNotificationQueuedEmailIds = await _workflowMessageService.SendOrderCancelledCustomerNotificationAsync(order, order.CustomerLanguageId);
+            if (orderCompensatedCustomerNotificationQueuedEmailIds.Any())
+                await AddOrderNoteAsync(order, $"\"Order compensated\" email (to customer) has been queued. Queued email identifiers: {string.Join(", ", orderCompensatedCustomerNotificationQueuedEmailIds)}.");
+        }
+
         //reward points
         if (order.OrderStatus == OrderStatus.Complete)
             await AwardRewardPointsAsync(order);
 
         if (order.OrderStatus == OrderStatus.Cancelled)
+            await ReduceRewardPointsAsync(order);
+
+        //Compensated is terminal like Cancelled: any reward points awarded
+        //optimistically must be reduced, and purchased gift cards deactivated.
+        if (order.OrderStatus == OrderStatus.Compensated)
             await ReduceRewardPointsAsync(order);
 
         //gift cards activation
@@ -1098,6 +1121,9 @@ public partial class OrderProcessingService : IOrderProcessingService
 
         //gift cards deactivation
         if (_orderSettings.DeactivateGiftCardsAfterCancellingOrder && order.OrderStatus == OrderStatus.Cancelled)
+            await SetActivatedValueForPurchasedGiftCardsAsync(order, false);
+
+        if (_orderSettings.DeactivateGiftCardsAfterCancellingOrder && order.OrderStatus == OrderStatus.Compensated)
             await SetActivatedValueForPurchasedGiftCardsAsync(order, false);
     }
 
@@ -1329,9 +1355,13 @@ public partial class OrderProcessingService : IOrderProcessingService
             //gift cards
             await AddGiftCardsAsync(product, sc.AttributesXml, sc.Quantity, orderItem, scUnitPriceExclTax.price);
 
-            //inventory
-            await _productService.AdjustInventoryAsync(product, -sc.Quantity, sc.AttributesXml,
-                string.Format(await _localizationService.GetResourceAsync("Admin.StockQuantityHistory.Messages.PlaceOrder"), order.Id));
+            //inventory — when the Omnichannel outbox is active, stock decrement is
+            //deferred to the Inventory service via OrderPlacedEvent / StockReserved
+            //round-trip; the local Product.StockQuantity must stay untouched here so
+            //order acceptance survives warehouse degradation.
+            if (!_omnichannelSettings.OutboxEnabled)
+                await _productService.AdjustInventoryAsync(product, -sc.Quantity, sc.AttributesXml,
+                    string.Format(await _localizationService.GetResourceAsync("Admin.StockQuantityHistory.Messages.PlaceOrder"), order.Id));
 
             await _eventPublisher.PublishAsync(new ShoppingCartItemMovedToOrderItemEvent(sc, orderItem));
         }
@@ -1978,9 +2008,10 @@ public partial class OrderProcessingService : IOrderProcessingService
                     //gift cards
                     await AddGiftCardsAsync(product, orderItem.AttributesXml, orderItem.Quantity, newOrderItem, amount: orderItem.UnitPriceExclTax);
 
-                    //inventory
-                    await _productService.AdjustInventoryAsync(product, -orderItem.Quantity, orderItem.AttributesXml,
-                        string.Format(await _localizationService.GetResourceAsync("Admin.StockQuantityHistory.Messages.PlaceOrder"), order.Id));
+                    //inventory — same outbox guard as the primary order-placement path
+                    if (!_omnichannelSettings.OutboxEnabled)
+                        await _productService.AdjustInventoryAsync(product, -orderItem.Quantity, orderItem.AttributesXml,
+                            string.Format(await _localizationService.GetResourceAsync("Admin.StockQuantityHistory.Messages.PlaceOrder"), order.Id));
                 }
 
                 //discount usage history
@@ -2392,6 +2423,48 @@ public partial class OrderProcessingService : IOrderProcessingService
 
         //Adjust inventory
         await ReturnOrderStockAsync(order, string.Format(await _localizationService.GetResourceAsync("Admin.StockQuantityHistory.Messages.CancelOrder"), order.Id));
+    }
+
+    /// <summary>
+    /// Compensates an order rejected downstream (e.g. by the warehouse Inventory service).
+    /// Releases the payment authorization (Void) or refunds (RefundOffline) depending on
+    /// PaymentStatus, transitions the order to Compensated, writes an audit note tagged with
+    /// the source EventId, and publishes OrderCompensatedEvent so external services see the
+    /// terminal state.
+    ///
+    /// Idempotent: a second invocation for an already-Compensated order is a no-op.
+    /// </summary>
+    /// <param name="order">Order</param>
+    /// <param name="sourceEventId">EventId of the inbound rejection event (for the audit trail)</param>
+    /// <param name="reason">Human-readable rejection reason from the upstream service</param>
+    public virtual async Task CompensateOrderAsync(Order order, Guid sourceEventId, string reason)
+    {
+        ArgumentNullException.ThrowIfNull(order);
+
+        if (order.OrderStatus == OrderStatus.Compensated)
+            return;
+
+        //release payment first so a SetOrderStatus failure does not leave the customer charged
+        try
+        {
+            if (order.PaymentStatus == PaymentStatus.Authorized && await CanVoidAsync(order))
+                await VoidAsync(order);
+            else if (order.PaymentStatus == PaymentStatus.Paid && await CanRefundAsync(order))
+                await RefundOfflineAsync(order);
+        }
+        catch (Exception ex)
+        {
+            await _logger.WarningAsync($"CompensateOrder: payment release failed for Order {order.Id} (sourceEventId={sourceEventId})", ex);
+            await AddOrderNoteAsync(order, $"Payment release failed during compensation: {ex.Message}");
+            //continue — terminal state must still be recorded for the audit trail
+        }
+
+        await SetOrderStatusAsync(order, OrderStatus.Compensated, notifyCustomer: true);
+
+        await AddOrderNoteAsync(order,
+            $"Order compensated. sourceEventId={sourceEventId:D}, reason=\"{reason}\", occurredOnUtc={DateTime.UtcNow:O}");
+
+        await _eventPublisher.PublishAsync(new OrderCompensatedEvent(order.Id, sourceEventId, reason));
     }
 
     /// <summary>
