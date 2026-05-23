@@ -88,6 +88,9 @@ public class OrderProcessingServiceDecorator : IOrderProcessingService
     public Task CancelOrderAsync(Order order, bool notifyCustomer)
         => _inner.CancelOrderAsync(order, notifyCustomer);
 
+    public Task CompensateOrderAsync(Order order, Guid sourceEventId, string reason)
+        => _inner.CompensateOrderAsync(order, sourceEventId, reason);
+
     public bool CanMarkOrderAsAuthorized(Order order)
         => _inner.CanMarkOrderAsAuthorized(order);
 
