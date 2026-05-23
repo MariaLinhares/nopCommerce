@@ -1,0 +1,11 @@
+{
+  "Group": "Misc",
+  "FriendlyName": "Omnichannel Outbox",
+  "SystemName": "Misc.OmnichannelOutbox",
+  "Version": "1.00.0",
+  "SupportedVersions": [ "5.00" ],
+  "Author": "AS2 Team",
+  "DisplayOrder": 1,
+  "FileName": "Nop.Plugin.Misc.OmnichannelOutbox.dll",
+  "Description": "Implements the transactional outbox pattern for reliable cross-context event publishing via RabbitMQ."
+}
