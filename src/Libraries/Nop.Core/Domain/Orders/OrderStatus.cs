@@ -23,5 +23,13 @@ public enum OrderStatus
     /// <summary>
     /// Cancelled
     /// </summary>
-    Cancelled = 40
+    Cancelled = 40,
+
+    /// <summary>
+    /// Compensated — order was accepted optimistically but the warehouse rejected the
+    /// reservation (or another downstream dependency failed); payment has been released
+    /// and the customer has been notified. Terminal state, distinct from Cancelled which
+    /// is operator-initiated.
+    /// </summary>
+    Compensated = 50
 }

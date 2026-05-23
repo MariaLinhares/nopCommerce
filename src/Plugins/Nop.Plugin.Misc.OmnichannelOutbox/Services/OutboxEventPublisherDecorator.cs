@@ -32,7 +32,11 @@ public class OutboxEventPublisherDecorator : IEventPublisher
     private static readonly HashSet<Type> WhitelistedTypes = new()
     {
         typeof(OrderPlacedEvent),
-        // Person 2 will add: typeof(OrderConfirmedEvent), typeof(StockReservedEvent), etc.
+        typeof(OrderConfirmedEvent),
+        typeof(OrderCompensatedEvent),
+        // StockReserved / ReservationRejected / StockLevelChanged / ShipmentDispatched
+        // are inbound only (consumed from RabbitMQ by Person 2's consumers plugin) —
+        // they are never published from the monolith and therefore not in the whitelist.
     };
 
     public OutboxEventPublisherDecorator(IEventPublisher inner, IServiceScopeFactory scopeFactory)
