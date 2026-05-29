@@ -1,0 +1,12 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "/api/shipments"
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "body": "{\"trackingNumber\": \"WIREMOCK-{{randomValue length=8 type='ALPHANUMERIC'}}\", \"carrier\": \"WireMock Carrier\"}",
+    "transformers": ["response-template"]
+  }
+}

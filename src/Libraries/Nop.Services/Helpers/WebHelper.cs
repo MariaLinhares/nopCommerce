@@ -262,7 +262,8 @@ public partial class WebHelper : IWebHelper
             uriStr = $"{GetStoreLocation().TrimEnd('/')}{(url.StartsWith(pathBase) ? url.Replace(pathBase, "") : url)}";
         }
 
-        var uri = new Uri(uriStr, UriKind.Absolute);
+        if (!Uri.TryCreate(uriStr, UriKind.Absolute, out var uri))
+            return url;
 
         //get current query parameters
         var queryParameters = QueryHelpers.ParseQuery(uri.Query);
@@ -301,7 +302,8 @@ public partial class WebHelper : IWebHelper
 
         //prepare URI object
         var isLocalUrl = CheckIsLocalUrl(url);
-        var uri = new Uri(isLocalUrl ? $"{GetStoreLocation().TrimEnd('/')}{url}" : url, UriKind.Absolute);
+        if (!Uri.TryCreate(isLocalUrl ? $"{GetStoreLocation().TrimEnd('/')}{url}" : url, UriKind.Absolute, out var uri))
+            return url;
 
         //get current query parameters
         var queryParameters = QueryHelpers.ParseQuery(uri.Query)

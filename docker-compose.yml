@@ -1,18 +1,99 @@
 services:
-    nopcommerce_web:
-        build: .
-        container_name: nopcommerce
-        ports:
-            - "80:80"
-        depends_on:
-            - nopcommerce_database
-    nopcommerce_database:
-        image: "mcr.microsoft.com/mssql/server:2019-latest"
-        container_name: nopcommerce_mssql_server
-        environment:
-            SA_PASSWORD: "nopCommerce_db_password"
-            ACCEPT_EULA: "Y"
-            MSSQL_PID: "Express"
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  nopcommerce_database:
+    image: "mcr.microsoft.com/mssql/server:2019-latest"
+    container_name: nopcommerce_mssql_server
+    ports:
+      - "1433:1433"
+    environment:
+      SA_PASSWORD: "nopCommerce_db_password"
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: "Express"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD", "/opt/mssql-tools18/bin/sqlcmd", "-S", "localhost", "-U", "sa", "-P", "nopCommerce_db_password", "-Q", "SELECT 1", "-No"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  nopcommerce_web:
+    build: .
+    container_name: nopcommerce
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    environment:
+      - RabbitMQ__Host=rabbitmq
+      - RabbitMQ__Port=5672
+      - RabbitMQ__UserName=guest
+      - RabbitMQ__Password=guest
+    volumes:
+      - nopcommerce_appdata:/app/App_Data
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      nopcommerce_database:
+        condition: service_healthy
+
+  wiremock:
+    image: wiremock/wiremock:latest
+    container_name: wiremock
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./wiremock:/home/wiremock
+    command: ["--verbose"]
+
+  inventory_service:
+    build: ./services/Nop.Service.Inventory
+    container_name: inventory_service
+    environment:
+      - RabbitMQ__Host=rabbitmq
+      - RabbitMQ__Port=5672
+      - RabbitMQ__UserName=guest
+      - RabbitMQ__Password=guest
+      - OpenBoxes__BaseUrl=http://wiremock:8080
+      # Set OpenBoxes__ForceReject=true to demonstrate the saga rejection path
+      - OpenBoxes__ForceReject=false
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      wiremock:
+        condition: service_started
+
+  shipping_service:
+    build: ./services/Nop.Service.Shipping
+    container_name: shipping_service
+    environment:
+      - RabbitMQ__Host=rabbitmq
+      - RabbitMQ__Port=5672
+      - RabbitMQ__UserName=guest
+      - RabbitMQ__Password=guest
+      - Carrier__BaseUrl=http://wiremock:8080
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      wiremock:
+        condition: service_started
 
 volumes:
-  nopcommerce_data:            
+  sqlserver_data:
+  nopcommerce_appdata:

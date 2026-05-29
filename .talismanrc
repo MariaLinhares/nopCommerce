@@ -1,6 +1,15 @@
 fileignoreconfig:
-  - filename: docs/part_1/diagrams/
-    ignore_detectors:
-      - base64Content
-      - creditCardNumber
-      - hexContent
+- filename: docs/part_1/diagrams/
+  ignore_detectors:
+  - base64Content
+  - creditCardNumber
+  - hexContent
+- filename: services/Nop.Service.Inventory/EventContracts/Outbound.cs
+  checksum: d91361610b017253acb7b63ea52df283e50455cba8b5724be887c9ba4bb63401
+- filename: docker-compose.yml
+  checksum: 6556975f7cfeaf5ca56853ccc4037557d452b195dbfbe8f748e1a0b2b9903a63
+- filename: services/Nop.Service.Shipping/Worker.cs
+  checksum: 85ad0b112be849dcf04104d902f475785c0c06e7f448f16d47dd1856e9f74649
+- filename: services/Nop.Service.Inventory/Worker.cs
+  checksum: 0560360e42833866d8dd00000997d7d87fc2ba1fb93520ac470ab6a8a9d4ffc1
+version: "1.0"

@@ -47,7 +47,7 @@ public class OutboxEventPublisherDecorator : IEventPublisher
 
     public async Task PublishAsync<TEvent>(TEvent @event)
     {
-        if (OutboxScope.Value && WhitelistedTypes.Contains(typeof(TEvent)))
+        if (WhitelistedTypes.Contains(typeof(TEvent)))
         {
             // Resolve scoped IOutboxService via a new scope.
             // This is necessary because the decorator is singleton but IOutboxService
@@ -67,7 +67,7 @@ public class OutboxEventPublisherDecorator : IEventPublisher
             return;
         }
 
-        // Outside outbox scope or non-whitelisted: pass through unchanged
+        // Non-whitelisted: pass through unchanged
         await _inner.PublishAsync(@event);
     }
 }
