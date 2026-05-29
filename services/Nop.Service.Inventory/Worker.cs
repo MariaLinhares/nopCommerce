@@ -1,6 +1,6 @@
-using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
+using Nop.Service.Inventory.Data;
 using Nop.Service.Inventory.EventContracts;
 using Nop.Service.Inventory.Services;
 using RabbitMQ.Client;
@@ -17,17 +17,17 @@ public class Worker : BackgroundService
     private readonly IConfiguration _config;
     private readonly ILogger<Worker> _logger;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly DeduplicationStore _dedup;
 
     private IConnection? _connection;
     private IChannel? _channel;
 
-    private readonly ConcurrentDictionary<string, bool> _processed = new();
-
-    public Worker(IConfiguration config, ILogger<Worker> logger, IServiceScopeFactory scopeFactory)
+    public Worker(IConfiguration config, ILogger<Worker> logger, IServiceScopeFactory scopeFactory, DeduplicationStore dedup)
     {
         _config = config;
         _logger = logger;
         _scopeFactory = scopeFactory;
+        _dedup = dedup;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -63,7 +63,7 @@ public class Worker : BackgroundService
             var messageId = msg.BasicProperties.MessageId ?? Guid.NewGuid().ToString();
             var body = Encoding.UTF8.GetString(msg.Body.Span);
 
-            if (_processed.ContainsKey(messageId))
+            if (!_dedup.TryMarkProcessed(messageId))
             {
                 _logger.LogDebug("Duplicate message {MessageId} — acking silently", messageId);
                 await _channel.BasicAckAsync(msg.DeliveryTag, false, ct);
@@ -73,7 +73,6 @@ public class Worker : BackgroundService
             try
             {
                 await HandleOrderPlacedAsync(body, messageId, ct);
-                _processed[messageId] = true;
                 await _channel.BasicAckAsync(msg.DeliveryTag, false, ct);
             }
             catch (Exception ex)

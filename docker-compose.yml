@@ -73,6 +73,8 @@ services:
       - OpenBoxes__BaseUrl=http://wiremock:8080
       # Set OpenBoxes__ForceReject=true to demonstrate the saga rejection path
       - OpenBoxes__ForceReject=false
+    volumes:
+      - inventory_data:/app/data
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -88,6 +90,8 @@ services:
       - RabbitMQ__UserName=guest
       - RabbitMQ__Password=guest
       - Carrier__BaseUrl=http://wiremock:8080
+    volumes:
+      - shipping_data:/app/data
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -97,3 +101,5 @@ services:
 volumes:
   sqlserver_data:
   nopcommerce_appdata:
+  inventory_data:
+  shipping_data:
