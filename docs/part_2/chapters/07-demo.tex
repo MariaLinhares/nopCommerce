@@ -11,8 +11,8 @@ docker compose up -d
 
 Wait for all services to report healthy, then open:
 \begin{itemize}
-    \item nopCommerce storefront: \texttt{http://localhost:5000}
-    \item nopCommerce admin: \texttt{http://localhost:5000/admin}
+    \item nopCommerce storefront: \texttt{http://localhost}
+    \item nopCommerce admin: \texttt{http://localhost/admin}
     \item RabbitMQ management: \texttt{http://localhost:15672} (guest/guest)
 \end{itemize}
 
@@ -48,10 +48,10 @@ SELECT * FROM OutboxMessage ORDER BY OccurredOnUtc DESC;
 \begin{enumerate}
     \item Stop the Inventory Sync Service:
     \begin{lstlisting}[language=bash]
-docker compose stop inventory-sync
+docker compose stop inventory_service
     \end{lstlisting}
     \item Place two or three orders via the storefront. Each should receive an order confirmation immediately.
-    \item In the SQL client, observe \texttt{OutboxMessage}: rows accumulate with \texttt{DispatchedOnUtc IS NULL} (for the \texttt{StockReservedEvent} / \texttt{OrderPlacedEvent} rows pending consumption) or \texttt{DispatchedOnUtc} is set (the outbox dispatched to RabbitMQ, but the Inventory service is not consuming).
+    \item In the SQL client, observe \texttt{OutboxMessage}: \texttt{OrderPlacedEvent} rows accumulate with \texttt{DispatchedOnUtc} set (the outbox dispatcher has published to RabbitMQ) but the Inventory service is not consuming them, so no \texttt{ProcessedInboxMessage} rows are added.
     \item In the RabbitMQ dashboard, observe the \texttt{order.placed} queue depth growing.
     \item In the admin panel, orders remain in \texttt{Placed} state — not confirmed, not cancelled.
 \end{enumerate}
@@ -67,7 +67,7 @@ docker compose stop inventory-sync
 \begin{enumerate}
     \item Restart the Inventory Sync Service:
     \begin{lstlisting}[language=bash]
-docker compose start inventory-sync
+docker compose start inventory_service
     \end{lstlisting}
     \item Watch the RabbitMQ \texttt{order.placed} queue drain in the management dashboard.
     \item In the SQL client, observe \texttt{ProcessedInboxMessage} rows being added as the Inventory service processes the backlog.

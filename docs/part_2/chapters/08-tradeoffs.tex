@@ -17,7 +17,7 @@ For QA-2's 30~s P95 target, a 5-10~s poll is comfortable. For QA-3's 2~s order p
 
 \subsection{Whitelisted vs.\ Universal Outbox}
 
-The \texttt{OutboxEventPublisherDecorator} whitelists only the six cross-context event types. All other events (including Brevo/Omnisend/nopCommerce-internal events) pass through unchanged. This avoids breaking existing plugins but means adding a new cross-context event requires a code change to the whitelist. We consider this deliberate friction: cross-context events represent API surface between bounded contexts and should not be added carelessly.
+The \texttt{OutboxEventPublisherDecorator} whitelists only the three outbound cross-context event types (\texttt{OrderPlacedEvent}, \texttt{OrderConfirmedEvent}, \texttt{OrderCompensatedEvent}). All other events (including Brevo/Omnisend/nopCommerce-internal events) pass through unchanged. This avoids breaking existing plugins but means adding a new cross-context event requires a code change to the whitelist. We consider this deliberate friction: cross-context events represent API surface between bounded contexts and should not be added carelessly.
 
 \subsection{In-Process Outbox vs.\ Separate Worker}
 

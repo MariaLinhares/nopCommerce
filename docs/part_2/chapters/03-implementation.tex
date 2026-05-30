@@ -39,7 +39,7 @@ The whitelist is the explicit seam between bounded contexts. Adding a new cross-
 Wraps \texttt{IOrderProcessingService} to supply the missing \texttt{TransactionScope} around the order-creation path. The decorator uses:
 
 \begin{lstlisting}[language={[Sharp]C}, caption={TransactionScope pattern used in the decorator}]
-using var ts = new TransactionScope(
+using var scope = new TransactionScope(
     TransactionScopeOption.Required,
     new TransactionOptions { IsolationLevel = IsolationLevel.ReadCommitted },
     TransactionScopeAsyncFlowOption.Enabled);
@@ -47,7 +47,7 @@ using var ts = new TransactionScope(
 var result = await _inner.PlaceOrderAsync(processPaymentRequest);
 
 if (result.Success)
-    ts.Complete();
+    scope.Complete();
 \end{lstlisting}
 
 Two non-obvious constraints confirmed by the feasibility spike:
