@@ -1,0 +1,98 @@
+\chapter{Architecture Decision Records}
+\label{ch:adr}
+
+This chapter presents the Architecture Decision Records (ADRs) for Part~2. ADRs 1 to 4 are carried over from Part~1 with implementation notes. ADRs 5 and 6 are new decisions made during implementation.
+
+\section*{ADR-1: Transactional Outbox (carried over, status: Implemented)}
+\addcontentsline{toc}{section}{ADR-1: Transactional Outbox}
+
+\textbf{Status:} Accepted. Implemented in \texttt{OmnichannelOutbox} plugin.
+
+\subsection*{Decision}
+Write cross-context events to an \texttt{OutboxMessage} table inside the same DB transaction as the order, then dispatch to RabbitMQ asynchronously via a polling \texttt{IScheduleTask}.
+
+\subsection*{Implementation notes}
+The \texttt{TransactionScopeAsyncFlowOption.Enabled} constraint discovered in the feasibility spike was confirmed in production code. Isolation level was tuned to \texttt{ReadCommitted} as anticipated. No further divergence from the Part~1 decision.
+
+\subsection*{Alternatives considered (Part~1)}
+\begin{itemize}
+    \item Direct RabbitMQ publish from \texttt{IConsumer<OrderPlacedEvent>}: REJECTED (dual-write risk).
+    \item XA / two-phase commit: REJECTED (RabbitMQ not an XA resource; operational complexity).
+    \item CDC / Debezium log mining: REJECTED (engine-specific; out of scope).
+    \item Synchronous publish inside the order transaction: REJECTED (broker in critical path).
+\end{itemize}
+
+\section*{ADR-2: Optimistic Stock Reservation (carried over, status: Implemented)}
+\addcontentsline{toc}{section}{ADR-2: Optimistic Stock Reservation}
+
+\textbf{Status:} Accepted. Implemented via \texttt{OrderPlacedEvent} outbox path and \texttt{StockReservedHandler} / \texttt{ReservationRejectedHandler}.
+
+\subsection*{Decision}
+Accept orders optimistically without a synchronous stock check. The \texttt{OrderPlaced} event instructs the Inventory service to attempt a reservation. If the reservation fails, the compensation flow transitions the order to \texttt{Compensated}.
+
+\subsection*{Implementation notes}
+The \texttt{Compensated} state is now concrete in \texttt{OrderStatus}. The compensation flow is implemented in \texttt{CompensationService}. No divergence from the Part~1 decision.
+
+\section*{ADR-3: WireMock Carrier Simulation (carried over, status: Implemented)}
+\addcontentsline{toc}{section}{ADR-3: WireMock Carrier Simulation}
+
+\textbf{Status:} Accepted. Implemented in the Shipping Service.
+
+\subsection*{Decision}
+Use WireMock to simulate the carrier API, avoiding a dependency on a live external service during development and the demo.
+
+\section*{ADR-4: Selective Context Extraction (carried over, status: Implemented)}
+\addcontentsline{toc}{section}{ADR-4: Selective Context Extraction}
+
+\textbf{Status:} Accepted. Inventory and Shipping services extracted; Catalog, Order Management, and Identity remain in the monolith.
+
+\subsection*{Decision}
+Extract only the contexts whose failure modes are operationally distinct (Inventory, Shipping). Keep the remaining contexts inside the nopCommerce monolith to avoid unnecessary operational complexity for a demo-scale system.
+
+\section*{ADR-5: Two Plugins Instead of One (new)}
+\addcontentsline{toc}{section}{ADR-5: Two Plugins Instead of One}
+
+\textbf{Status:} Accepted. Decided during Part~2 implementation.
+
+\subsection*{Context}
+Part~1 described a single \texttt{OmnichannelOutbox} plugin. During implementation the outbox write path and the inbound subscriber path grew in different directions, with distinct failure domains and lifecycle concerns.
+
+\subsection*{Decision}
+Split into two plugins: \texttt{OmnichannelOutbox} (write path) and \texttt{OmnichannelConsumers} (read/inbound path).
+
+\subsection*{Rationale}
+\begin{itemize}
+    \item Each plugin has a single deployment and failure mode.
+    \item The two paths can be enabled/disabled independently without affecting the other.
+    \item Mirrors the ADD iteration structure: Iteration~1 = outbox write, Iteration~2 = consumers.
+\end{itemize}
+
+\subsection*{Alternatives considered}
+\begin{itemize}
+    \item \textbf{Single plugin:} REJECTED: one plugin holding both the dispatcher and the subscriber creates a large, hard-to-test unit with mixed failure domains.
+    \item \textbf{Separate process for consumers:} REJECTED: out of scope; the monolith process is already hosting the outbox dispatcher as an \texttt{IScheduleTask}.
+\end{itemize}
+
+\section*{ADR-6: Inbox Table Deduplication (new)}
+\addcontentsline{toc}{section}{ADR-6: Inbox Table Deduplication}
+
+\textbf{Status:} Accepted. Implemented in \texttt{InboxDeduplicationService} and \texttt{ProcessedInboxMessage} entity.
+
+\subsection*{Context}
+RabbitMQ delivers at-least-once. Part~1 stated that consumers must be idempotent but left the mechanism open.
+
+\subsection*{Decision}
+Persist a \texttt{ProcessedInboxMessage} record (keyed on \texttt{EventId}) for every handled message. Check for this record before processing. Duplicates are discarded without executing handler logic.
+
+\subsection*{Rationale}
+\begin{itemize}
+    \item Handler logic (state transitions, payment voids, notifications) is not naturally idempotent; centralising the check at the infrastructure layer removes the burden from individual handlers.
+    \item The \texttt{ProcessedInboxMessage} table doubles as an audit log of processed messages.
+    \item The same \texttt{InboxRetentionTask} pattern used by the outbox cleans up old records.
+\end{itemize}
+
+\subsection*{Alternatives considered}
+\begin{itemize}
+    \item \textbf{Handler-level idempotency:} REJECTED: each handler would need to query its own state to determine whether the action had already been taken (e.g., ``is this order already Confirmed?''). This is error-prone and forces domain logic to carry infrastructure concerns.
+    \item \textbf{Exactly-once delivery via RabbitMQ quorum queues:} REJECTED: quorum queues reduce but do not eliminate duplicates; does not remove the need for consumer-side idempotency.
+\end{itemize}
