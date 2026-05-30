@@ -5,6 +5,8 @@ fileignoreconfig:
   checksum: 1f065aed10c8561a76532a148341ce6bd62d6818c6866f844116835514baec50
 - filename: docs/part_2/chapters/03-implementation.tex
   checksum: 4aca4424584859869cb406454a6774b98956227ea9e95d229a5c478fc3907aef
+- filename: docs/part_2/chapters/08-tradeoffs.tex
+  checksum: 53d41c63ddcee8b0d7225b25caa863b3b87652e72660a199525ef38bcab2f831
 - filename: docs/part_1/diagrams/
   ignore_detectors:
   - base64Content

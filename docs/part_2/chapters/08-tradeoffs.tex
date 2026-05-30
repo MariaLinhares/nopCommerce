@@ -1,0 +1,68 @@
+\chapter{Tradeoffs, Scope Cuts, and Limitations}
+\label{ch:tradeoffs}
+
+\section{Tradeoffs We Own}
+
+\subsection{At-Least-Once vs.\ Exactly-Once Delivery}
+
+We chose at-least-once delivery. Exactly-once would require a distributed transaction across the SQL Server database and RabbitMQ, which RabbitMQ does not support as an XA resource. The consequence is that every consumer must be idempotent, we enforce this centrally via the inbox deduplication table (ADR-6). Handlers are shielded from this concern at the cost of an extra DB read per inbound message.
+
+The alternative, trying to achieve exactly-once via RabbitMQ quorum queues and deduplication windows, reduces but does not eliminate duplicates, and introduces a time-windowed assumption that is harder to reason about than a persistent record. We prefer the persistent record.
+
+\subsection{Dispatcher Polling vs.\ DB Change Notifications}
+
+The outbox dispatcher is a polling \texttt{IScheduleTask} (5-10~s cadence). This introduces a minimum propagation lag equal to the polling interval. A push-based mechanism (SQL Server \texttt{QUERY\_NOTIFICATION} or Debezium CDC) would reduce lag to near-zero but adds significant operational complexity and ties the design to SQL Server (ADR-1, alternative C).
+
+For QA-2's 30~s P95 target, a 5-10~s poll is comfortable. For QA-3's 2~s order placement P95, the polling happens in the background and is not on the critical path. The tradeoff is acceptable for the demo scale.
+
+\subsection{Whitelisted vs.\ Universal Outbox}
+
+The \texttt{OutboxEventPublisherDecorator} whitelists only the six cross-context event types. All other events (including Brevo/Omnisend/nopCommerce-internal events) pass through unchanged. This avoids breaking existing plugins but means adding a new cross-context event requires a code change to the whitelist. We consider this deliberate friction: cross-context events represent API surface between bounded contexts and should not be added carelessly.
+
+\subsection{In-Process Outbox vs.\ Separate Worker}
+
+The outbox dispatcher and the consumer subscriber run inside the nopCommerce process as \texttt{IScheduleTask} instances. A separate worker process would allow independent scaling and deployment. We rejected this because it adds a new deployable unit for a demo-scale system where the single-instance constraint is already acknowledged (Risk~R4). The \texttt{IScheduleTask} approach keeps the deployment simple at the cost of co-location with the web process.
+
+\section{Scope Cuts and Their Consequences}
+
+\begin{table}[H]
+\centering
+\caption{Scope cuts and their consequences}
+\label{tab:scope-cuts}
+\begin{tabularx}{\textwidth}{@{} L{4.5cm} X @{}}
+\toprule
+\textbf{Scope cut} & \textbf{Consequence / what breaks if we change our minds} \\
+\midrule
+No Redis / no distributed cache & Adding a second nopCommerce instance would cause cache divergence and double-dispatching. Requires replacing \texttt{IStaticCacheManager} with a Redis-backed implementation. \\
+\addlinespace
+Payment = Order Management & No separate Payment service means payment operations go through nopCommerce's payment abstractions directly. Extracting payment later would require its own event contracts and compensation flows. \\
+\addlinespace
+No federated SSO & Each channel maintains its own customer identity. Cross-channel customer recognition is not supported. \\
+\addlinespace
+Outbox in the monolith process & If the nopCommerce process crashes mid-dispatch, in-flight messages are retried on restart (at-least-once). No data is lost, but the recovery window equals the process restart time. \\
+\addlinespace
+Carrier = WireMock simulation & Real carrier integration would require a non-stub ACL layer in the Shipping service. The event contracts (ShipmentDispatchedEvent) are already correctly shaped for this. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Known Limitations}
+
+\begin{enumerate}
+    \item \textbf{Load testing at demo scale only:} A k6 script (\texttt{load-tests/order-placement.js}) validates QA-3 (P95 $\leq$ 2~s, throughput $\geq$ 50~orders/min) against the Docker Compose environment. The same script drives the live stress demo (Scenarios~2 and~3: kill the inventory service mid-run, restart it, observe recovery). Results are representative of a single-instance deployment; they do not model horizontal scaling, a Redis-backed cache, or a clustered RabbitMQ broker. QA-2 propagation lag (P95 $\leq$ 30~s) is measured indirectly by querying the \texttt{OutboxMessage} dispatch lag after the run rather than inline in k6. This is Risk~R3.
+    \item \textbf{No circuit breaker:} the outbox dispatcher makes no attempt to detect a persistently down broker and back off intelligently. It retries on every tick. A circuit breaker (or exponential backoff on \texttt{Attempts}) would reduce noise in production logs.
+    \item \textbf{No schema versioning on event payloads:} event payloads are JSON with no version field. Schema evolution (adding/removing fields) is handled by convention (additive changes only). A formal schema registry was out of scope.
+    \item \textbf{Manual DLQ handling:} messages that exceed the maximum dispatch attempts remain in the outbox table as a dead-letter view. There is no automated alerting or reprocessing UI. An operator must query the table and manually republish or void.
+    \item \textbf{Single RabbitMQ instance:} no clustering, no mirrored queues. RabbitMQ is a single point of failure in the demo environment. In production, quorum queues and a clustered broker would be required.
+\end{enumerate}
+
+\section{What We Would Do Differently at Production Scale}
+
+\begin{enumerate}
+    \item Replace the polling dispatcher with a push-based mechanism (CDC or SQL Server change notifications) to reduce propagation lag and DB read load.
+    \item Move the dispatcher and consumer to a separate worker process, enabling independent scaling and deployment.
+    \item Add Redis as a distributed cache to allow multiple nopCommerce instances.
+    \item Introduce exponential backoff and a proper DLQ with monitoring alerts for failed outbox messages.
+    \item Add a schema registry (or at minimum, a version field on all event payloads) to enable safe schema evolution.
+    \item Implement RabbitMQ quorum queues and broker clustering for message durability.
+\end{enumerate}
