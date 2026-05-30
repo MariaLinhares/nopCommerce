@@ -1,0 +1,122 @@
+\chapter{Traceability Matrix}
+\label{ch:traceability}
+
+This chapter traces the path from business drivers through quality attribute scenarios to the concrete implementation artefacts that satisfy them.
+
+\section{Business Drivers}
+
+\begin{description}
+    \item[BD-1] \textbf{Omnichannel resilience:} order acceptance must not depend on warehouse availability.
+    \item[BD-2] \textbf{Stock consistency:} the online storefront must reflect accurate stock levels within a bounded delay.
+    \item[BD-3] \textbf{Customer trust:} orders must either succeed reliably or fail cleanly with compensation (no silent data loss, no phantom charges).
+    \item[BD-4] \textbf{Operational visibility:} operators must be able to observe the state of any order and any in-flight message without custom tooling.
+\end{description}
+
+\section{Quality Attribute Scenarios (Part~1 summary)}
+
+\begin{table}[H]
+\centering
+\caption{Quality attribute scenarios}
+\label{tab:qa-scenarios}
+\begin{tabularx}{\textwidth}{@{} C{1.2cm} L{2.8cm} X L{3.2cm} @{}}
+\toprule
+\textbf{ID} & \textbf{Quality} & \textbf{Response measure} & \textbf{Business driver} \\
+\midrule
+QA-1 & Availability & $\geq$99\% order success during 15-min warehouse outage; zero outbox data loss & BD-1 \\
+QA-2 & Consistency & P95 stock propagation $\leq$ 30~s; max lag 5~min during RabbitMQ degradation & BD-2 \\
+QA-3 & Performance & Order placement P95 $\leq$ 2~s; throughput $\geq$ 50~orders/min & BD-1, BD-3 \\
+QA-4 & Recoverability & Outbox drains within 5~min of warehouse recovery & BD-1 \\
+QA-5 & Operability & Every cross-context message traceable without custom tooling & BD-4 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Full Traceability Matrix}
+
+{\small
+\begin{longtable}{@{} L{1.2cm} L{1.5cm} L{5.0cm} L{6.8cm} @{}}
+\caption{Business drivers, QA scenarios, and implementation artefacts}
+\label{tab:traceability} \\
+\toprule
+\textbf{BD} & \textbf{QA} & \textbf{Architectural decision} & \textbf{Implementation artefact} \\
+\midrule
+\endfirsthead
+\multicolumn{4}{l}{\footnotesize (continued)} \\
+\toprule
+\textbf{BD} & \textbf{QA} & \textbf{Architectural decision} & \textbf{Implementation artefact} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+
+BD-1 & QA-1 & Transactional outbox decouples order acceptance from broker/warehouse &
+  \texttt{OutboxMessage} entity,\newline
+  \texttt{OutboxEventPublisherDecorator},\newline
+  \texttt{OrderProcessingServiceDecorator} \\
+\addlinespace
+BD-1 & QA-1 & \texttt{TransactionScope} ensures outbox row and order commit atomically &
+  \texttt{OrderProcessingServiceDecorator}\newline
+  \texttt{.PlaceOrderAsync} \\
+\addlinespace
+BD-1 & QA-3 & \texttt{ReadCommitted} isolation level avoids throughput tax &
+  \texttt{OrderProcessingServiceDecorator}\newline
+  (isolation level option) \\
+\addlinespace
+BD-1 & QA-4 & Dispatcher retries outbox rows; recovers automatically after broker restart &
+  \texttt{OutboxDispatcherTask},\newline
+  \texttt{RabbitMqPublisher} (publisher confirms) \\
+\addlinespace
+BD-2 & QA-2 & \texttt{StockLevelChangedEvent} flows from Inventory to Catalog projection &
+  \texttt{StockLevelChangedHandler},\newline
+  outbox whitelist in\newline
+  \texttt{OutboxEventPublisherDecorator} \\
+\addlinespace
+BD-3 & QA-1 & Optimistic reservation: accept first, reconcile asynchronously &
+  \texttt{OrderPlacedEvent} in outbox;\newline
+  \texttt{StockReservedHandler} to \texttt{Confirmed};\newline
+  \texttt{ReservationRejectedHandler} to\newline
+  \texttt{CompensationService} \\
+\addlinespace
+BD-3 & QA-1 & Compensation on rejection: payment void and customer notification &
+  \texttt{CompensationService},\newline
+  \texttt{ReservationRejectedHandler},\newline
+  \texttt{Compensated} order state \\
+\addlinespace
+BD-4 & QA-5 & Outbox table as observable message log &
+  \texttt{OutboxMessage}\newline
+  (\texttt{OccurredOnUtc}, \texttt{DispatchedOnUtc}, \texttt{Attempts}) \\
+\addlinespace
+BD-4 & QA-5 & Inbox table as audit log of processed messages &
+  \texttt{ProcessedInboxMessage},\newline
+  \texttt{InboxDeduplicationService} \\
+\addlinespace
+BD-4 & QA-5 & Order state transitions traceable via \texttt{OrderStatus} and order notes &
+  \texttt{StockReservedHandler},\newline
+  \texttt{ReservationRejectedHandler},\newline
+  \texttt{ShipmentDispatchedHandler} \\
+\addlinespace
+BD-1, BD-4 & QA-5 & Outbox retention prevents unbounded growth &
+  \texttt{OutboxRetentionTask} (7-day cleanup) \\
+
+\end{longtable}
+}
+
+\section{Risk Coverage}
+
+\begin{table}[H]
+\centering
+\caption{Risk register: implementation status}
+\label{tab:risks}
+\small
+\begin{tabularx}{\textwidth}{@{} C{1cm} L{4.2cm} L{2.8cm} X @{}}
+\toprule
+\textbf{\#} & \textbf{Risk} & \textbf{Status} & \textbf{Mitigation implemented} \\
+\midrule
+R1 & Whitelist collides with unrelated consumers & Mitigated & Explicit whitelist in \texttt{OutboxEventPublisherDecorator}; all other events pass through \\
+R2 & No ambient \texttt{TransactionScope} in \texttt{PlaceOrderAsync} & Mitigated & \texttt{OrderProcessingServiceDecorator} supplies the scope \\
+R3 & Dispatcher cadence vs.\ QA-2 propagation target & Open & Cadence set to 5-10~s; measure under load in demo \\
+R4 & No horizontal scaling (in-memory cache) & Acknowledged & Single-instance demo; Redis is future work \\
+R5 & Outbox table grows unbounded & Mitigated & \texttt{OutboxRetentionTask} deletes dispatched rows older than 7~days \\
+\bottomrule
+\end{tabularx}
+\end{table}
