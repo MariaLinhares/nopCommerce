@@ -1,0 +1,59 @@
+\chapter{Cross-Cutting Concerns}
+\label{ch:crosscutting}
+
+\section{Idempotency}
+
+Idempotency is enforced at two levels:
+
+\begin{enumerate}
+    \item \textbf{Outbox side:} each \texttt{OutboxMessage} carries a unique \texttt{EventId} (a \texttt{Guid} generated at write time). Consumers use this field as their deduplication key.
+    \item \textbf{Consumer side:} \texttt{InboxDeduplicationService} checks \texttt{ProcessedInboxMessage} before any handler executes. If the \texttt{EventId} has already been recorded, the message is discarded. This makes all handlers idempotent by construction, regardless of their internal logic.
+\end{enumerate}
+
+\section{Error Handling and Dead-Letter Strategy}
+
+\begin{table}[H]
+\centering
+\caption{Error handling strategy by failure point}
+\label{tab:error-handling}
+\begin{tabularx}{\textwidth}{@{} L{3cm} L{4cm} X @{}}
+\toprule
+\textbf{Failure point} & \textbf{Behaviour} & \textbf{Operator action} \\
+\midrule
+Outbox write fails & Order placement rolls back (same transaction) & None — customer sees failure, can retry \\
+\addlinespace
+RabbitMQ publish fails & \texttt{Attempts} incremented; retried on next dispatcher tick & Monitor \texttt{Attempts} column; investigate if broker is down \\
+\addlinespace
+\texttt{Attempts > N} & Row stays in outbox as dead-letter record & Manual intervention: inspect payload, republish or void \\
+\addlinespace
+Consumer handler throws & Message NACK'd to RabbitMQ; requeued or routed to DLQ after configured retries & Inspect RabbitMQ DLQ; fix handler bug; republish \\
+\addlinespace
+Duplicate message received & Silently discarded by \texttt{Inbox\-Deduplication\-Service} & None required \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Observability}
+
+The system provides three observable surfaces without requiring external tooling:
+
+\begin{description}
+    \item[Outbox table] Every cross-context message has a row with \texttt{OccurredOnUtc}, \texttt{DispatchedOnUtc}, and \texttt{Attempts}. The lag between these two timestamps is the propagation delay. Rows with \texttt{DispatchedOnUtc = NULL} and high \texttt{Attempts} signal delivery problems.
+    \item[ProcessedInboxMessage table] An audit log of every inbound message successfully processed, with timestamps.
+    \item[Order status transitions] The \texttt{OrderStatus} field records the current state. Combined with the nopCommerce order notes (added by each handler), this constitutes a state transition audit trail.
+    \item[RabbitMQ management dashboard] Exchange throughput, queue depths, and DLQ contents are visible in the RabbitMQ management UI (\texttt{http://localhost:15672} in the Docker Compose environment).
+\end{description}
+
+\section{Security}
+
+\begin{itemize}
+    \item RabbitMQ credentials are passed via environment variables (not hardcoded). In the Docker Compose environment they are set in \texttt{.env}.
+    \item The outbox table is inside the nopCommerce application database, protected by the same SQL Server access controls as all other tables.
+    \item No new HTTP endpoints are exposed by the two plugins — all communication is DB reads/writes and AMQP.
+    \item The event payload is JSON. No sensitive customer data (payment card numbers, passwords) is included in any cross-context event. Payment operations use nopCommerce's existing payment service abstractions internally.
+\end{itemize}
+
+\section{Scalability Constraints}
+
+The current design is explicitly single-instance. The in-memory nopCommerce cache (\texttt{IStaticCacheManager}) is not shared across instances. Running two nopCommerce processes would cause cache divergence and double-dispatching from the outbox. Horizontal scaling would require Redis (or another distributed cache) and a leader-election mechanism for the dispatcher task. This is acknowledged as out of scope for the demo.
+
