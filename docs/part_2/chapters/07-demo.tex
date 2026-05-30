@@ -1,0 +1,145 @@
+\chapter{Demo Orchestration}
+\label{ch:demo}
+
+\section{Prerequisites}
+
+All services are started via Docker Compose from the repository root:
+
+\begin{lstlisting}[language=bash, caption={Start the full environment}]
+docker compose up -d
+\end{lstlisting}
+
+Wait for all services to report healthy, then open:
+\begin{itemize}
+    \item nopCommerce storefront: \texttt{http://localhost:5000}
+    \item nopCommerce admin: \texttt{http://localhost:5000/admin}
+    \item RabbitMQ management: \texttt{http://localhost:15672} (guest/guest)
+\end{itemize}
+
+Open a SQL client connected to the nopCommerce SQL Server database to observe the \texttt{OutboxMessage} and \texttt{ProcessedInboxMessage} tables live.
+
+% -------------------------------------------------------
+\section{Scenario 1 — Happy Path}
+\label{sec:demo-happy}
+
+\textbf{Proves:} end-to-end flow works; outbox is the reliability seam.
+
+\begin{enumerate}
+    \item Browse the storefront, add a product to the cart, proceed to checkout.
+    \item Complete the order. Observe the order confirmation page.
+    \item In the SQL client, run:
+    \begin{lstlisting}[language=SQL]
+SELECT * FROM OutboxMessage ORDER BY OccurredOnUtc DESC;
+    \end{lstlisting}
+    Verify a row with \texttt{MessageType = 'OrderPlacedEvent'} and \texttt{DispatchedOnUtc IS NULL} appears immediately after placement, then \texttt{DispatchedOnUtc} is set within 5-10~s.
+    \item In the RabbitMQ dashboard, confirm a message was consumed from the \texttt{order.placed} queue.
+    \item In the admin panel (\textbf{Orders}), confirm the order transitions from \texttt{Placed} to \texttt{Confirmed} within seconds.
+    \item In \texttt{ProcessedInboxMessage}, confirm a row for \texttt{StockReservedEvent} is recorded.
+\end{enumerate}
+
+\textbf{Expected result:} order in \texttt{Confirmed} state; outbox row dispatched; no errors in logs.
+
+% -------------------------------------------------------
+\section{Scenario 2 — Warehouse Degradation}
+\label{sec:demo-degraded}
+
+\textbf{Proves:} order acceptance is decoupled from warehouse availability (QA-1 mandatory pressure point).
+
+\begin{enumerate}
+    \item Stop the Inventory Sync Service:
+    \begin{lstlisting}[language=bash]
+docker compose stop inventory-sync
+    \end{lstlisting}
+    \item Place two or three orders via the storefront. Each should receive an order confirmation immediately.
+    \item In the SQL client, observe \texttt{OutboxMessage}: rows accumulate with \texttt{DispatchedOnUtc IS NULL} (for the \texttt{StockReservedEvent} / \texttt{OrderPlacedEvent} rows pending consumption) or \texttt{DispatchedOnUtc} is set (the outbox dispatched to RabbitMQ, but the Inventory service is not consuming).
+    \item In the RabbitMQ dashboard, observe the \texttt{order.placed} queue depth growing.
+    \item In the admin panel, orders remain in \texttt{Placed} state — not confirmed, not cancelled.
+\end{enumerate}
+
+\textbf{Expected result:} storefront remains 100\% available to customers; outbox accumulates messages; orders are queued, not lost.
+
+% -------------------------------------------------------
+\section{Scenario 3 — Recovery}
+\label{sec:demo-recovery}
+
+\textbf{Proves:} the system self-heals when the warehouse recovers (QA-4).
+
+\begin{enumerate}
+    \item Restart the Inventory Sync Service:
+    \begin{lstlisting}[language=bash]
+docker compose start inventory-sync
+    \end{lstlisting}
+    \item Watch the RabbitMQ \texttt{order.placed} queue drain in the management dashboard.
+    \item In the SQL client, observe \texttt{ProcessedInboxMessage} rows being added as the Inventory service processes the backlog.
+    \item In the admin panel, observe the orders transitioning from \texttt{Placed} to \texttt{Confirmed} within minutes.
+\end{enumerate}
+
+\textbf{Expected result:} all queued orders reconcile within 5~minutes of restart; no data loss; no manual intervention required.
+
+\textit{If Scenarios~2 and~3 work live in the presentation, the mandatory runtime challenge requirement is satisfied.}
+
+% -------------------------------------------------------
+\section{Scenario 4 — Forced Rejection and Compensation}
+\label{sec:demo-rejection}
+
+\textbf{Proves:} the compensation flow works; the \texttt{Compensated} state is reachable.
+
+\begin{enumerate}
+    \item Configure the Inventory Sync Service (or its OpenBoxes stub) to return a rejection response for the next reservation request. (See the WireMock / stub configuration in \texttt{docker/wiremock/mappings/}.)
+    \item Place an order via the storefront.
+    \item Observe the \texttt{ReservationRejectedEvent} arrive in the \texttt{ProcessedInboxMessage} table.
+    \item In the admin panel, confirm the order transitions to \texttt{Compensated}.
+    \item Confirm the payment was voided (check the order payment status).
+    \item Confirm a customer notification was sent (check the nopCommerce message queue log in admin).
+\end{enumerate}
+
+\textbf{Expected result:} order in \texttt{Compensated} state; payment voided; customer notified; no orphaned charge.
+
+% -------------------------------------------------------
+\section{Scenario 5 — Audit Trail}
+\label{sec:demo-audit}
+
+\textbf{Proves:} the system is observable without custom tooling (QA-5).
+
+\begin{enumerate}
+    \item In the SQL client:
+    \begin{lstlisting}[language=SQL]
+-- All outbox messages with dispatch lag
+SELECT MessageType,
+       OccurredOnUtc,
+       DispatchedOnUtc,
+       DATEDIFF(SECOND, OccurredOnUtc, DispatchedOnUtc) AS LagSeconds,
+       Attempts
+FROM OutboxMessage
+ORDER BY OccurredOnUtc DESC;
+
+-- All processed inbound messages
+SELECT * FROM ProcessedInboxMessage ORDER BY ProcessedOnUtc DESC;
+    \end{lstlisting}
+    \item In the RabbitMQ dashboard, show the Dead Letter Queue (DLQ) — should be empty in the happy path.
+    \item In the admin panel, open an order and show the order notes tab — each state transition is recorded with a timestamp.
+\end{enumerate}
+
+\textbf{Expected result:} every message and every state transition is traceable from standard operator surfaces.
+
+% -------------------------------------------------------
+%\section{Demo Timing Guide}
+
+%\begin{table}[H]
+%\centering
+%\caption{15-minute presentation allocation}
+%\label{tab:timing}
+%\begin{tabularx}{\textwidth}{@{} L{2cm} L{4cm} X @{}}
+%\toprule
+%\textbf{Time} & \textbf{Segment} & \textbf{Content} \\
+%\midrule
+%0:00-2:00 & Architecture overview & One-slide summary: the bet, the two plugins, the flow \\
+%2:00-4:00 & Scenario 1 & Happy path live demo \\
+%4:00-7:00 & Scenarios 2+3 & Kill warehouse, place orders, restart, watch recovery \\
+%7:00-9:00 & Scenario 4 & Force rejection, show \texttt{Compensated} state \\
+%9:00-10:30 & Scenario 5 & Audit trail walkthrough \\
+%10:30-13:00 & Tradeoffs & Scope cuts, known limitations, what we would do differently \\
+%13:00-15:00 & Q\&A buffer & \\
+%\bottomrule
+%\end{tabularx}
+%\end{table}
