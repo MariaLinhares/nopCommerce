@@ -1,4 +1,8 @@
 fileignoreconfig:
+- filename: docs/part_2/Makefile
+  checksum: 53417632206cc25bea643810bb6f413e0e8f436165c46803a9625a41c14a43fc
+- filename: docs/part_2/report.tex
+  checksum: 1f065aed10c8561a76532a148341ce6bd62d6818c6866f844116835514baec50
 - filename: docs/part_1/diagrams/
   ignore_detectors:
   - base64Content

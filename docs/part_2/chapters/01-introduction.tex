@@ -1,0 +1,32 @@
+\chapter{Introduction}
+\label{ch:introduction}
+
+\section{Context and Scenario}
+
+This report documents the Part~2 implementation of Scenario~C, \textit{Omnichannel Commerce Core}, for the Software Architecture assignment. The system under evolution is \textbf{nopCommerce}, an open-source e-commerce platform, extended to coordinate reliably with external operational systems: an OpenBoxes warehouse management system (WMS), a WireMock-simulated carrier, and a RabbitMQ message broker.
+
+The domain is modelled for \textbf{VerdeMart Retail}, a fictional retailer operating both online and physical channels.
+
+The team is composed of Maria Linhares, Rui Machado, Guilherme Rosa, and Gabriel Silva.
+
+\section{The Architectural Bet}
+
+The central decision of Part~1, carried into implementation in Part~2, is stated in one sentence:
+
+\begin{decisionbox}
+Replace the synchronous stock decrement inside \texttt{OrderProcessingService} with an outbox-published event, so order acceptance survives warehouse degradation and reconciles on recovery.
+\end{decisionbox}
+
+This single change, and everything it pulls along, is the assignment. It directly addresses \textbf{QA-1} (availability under warehouse degradation) and sets the foundation for \textbf{QA-2} (stock consistency) and \textbf{QA-3} (order placement throughput).
+
+\section{Report Structure}
+
+\begin{description}
+    \item[Chapter~\ref{ch:evolution}] Architecture evolution from Part~1 plan to actual implementation: what changed and why.
+    \item[Chapter~\ref{ch:implementation}] Implementation overview of both plugins built inside the nopCommerce monolith.
+    \item[Chapter~\ref{ch:adr}] Architecture Decision Records: updated from Part~1 and new decisions made during implementation.
+    \item[Chapter~\ref{ch:crosscutting}] Cross-cutting concerns: idempotency, error handling, observability, security.
+    \item[Chapter~\ref{ch:traceability}] Traceability matrix linking business drivers to QA scenarios to implementation.
+    \item[Chapter~\ref{ch:demo}] Demo orchestration: the four scenarios and their success criteria.
+    \item[Chapter~\ref{ch:tradeoffs}] Defence of tradeoffs, scope cuts, and known limitations.
+\end{description}
