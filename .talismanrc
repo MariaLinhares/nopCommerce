@@ -7,6 +7,10 @@ fileignoreconfig:
   checksum: 4aca4424584859869cb406454a6774b98956227ea9e95d229a5c478fc3907aef
 - filename: docs/part_2/chapters/08-tradeoffs.tex
   checksum: 53d41c63ddcee8b0d7225b25caa863b3b87652e72660a199525ef38bcab2f831
+- filename: load-tests/setup.sh
+  checksum: 926853277b83995523154ea7cb31c0ed14bbe300b0c946711c0d176ba151ebf0
+- filename: load-tests/order-placement.js
+  checksum: cc3cbf72b56f00c5c45b54abc930c6c1cef68478c82f415df6bce9f25dabae77
 - filename: docs/part_1/diagrams/
   ignore_detectors:
   - base64Content
