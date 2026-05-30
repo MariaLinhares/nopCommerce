@@ -1,0 +1,117 @@
+\chapter{Implementation Overview}
+\label{ch:implementation}
+
+\section{OmnichannelOutbox Plugin}
+
+\texttt{Nop.\-Plugin.\-Misc.\-Omnichannel\-Outbox} is the outbox write path. It is registered via \texttt{INopStartup} and requires no changes to nopCommerce core.
+
+\subsection{OutboxMessage Entity}
+
+\texttt{OutboxMessage} is persisted to a dedicated table created by a FluentMigrator schema migration shipped with the plugin. Key fields:
+
+\begin{table}[H]
+\centering
+\caption{\texttt{OutboxMessage} schema}
+\label{tab:outbox-schema}
+\begin{tabularx}{\textwidth}{@{} L{4cm} L{2.5cm} X @{}}
+\toprule
+\textbf{Column} & \textbf{Type} & \textbf{Purpose} \\
+\midrule
+\texttt{Id} & \texttt{int} & Primary key \\
+\texttt{EventId} & \texttt{Guid} & Idempotency key for consumers \\
+\texttt{MessageType} & \texttt{string} & Fully qualified event type name \\
+\texttt{Payload} & \texttt{string} & JSON-serialised event payload \\
+\texttt{OccurredOnUtc} & \texttt{DateTime} & When the event was written \\
+\texttt{DispatchedOnUtc} & \texttt{DateTime?} & Null until the dispatcher confirms broker ack \\
+\texttt{Attempts} & \texttt{int} & Incremented on each failed dispatch attempt \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{OutboxEventPublisherDecorator}
+
+Wraps nopCommerce's \texttt{IEventPublisher}. For a \textbf{whitelisted set} of cross-context event types, it writes an \texttt{OutboxMessage} row instead of (or in addition to) calling in-process consumers. All other event types pass through unchanged, preserving compatibility with existing plugins (Brevo, Omnisend, etc.).
+
+The whitelist is the explicit seam between bounded contexts. Adding a new cross-context event requires editing the whitelist — deliberate friction to prevent accidental coupling.
+
+\subsection{OrderProcessingServiceDecorator}
+
+Wraps \texttt{IOrderProcessingService} to supply the missing \texttt{TransactionScope} around the order-creation path. The decorator uses:
+
+\begin{lstlisting}[language={[Sharp]C}, caption={TransactionScope pattern used in the decorator}]
+using var ts = new TransactionScope(
+    TransactionScopeOption.Required,
+    new TransactionOptions { IsolationLevel = IsolationLevel.ReadCommitted },
+    TransactionScopeAsyncFlowOption.Enabled);
+
+var result = await _inner.PlaceOrderAsync(processPaymentRequest);
+
+if (result.Success)
+    ts.Complete();
+\end{lstlisting}
+
+Two non-obvious constraints confirmed by the feasibility spike:
+\begin{itemize}
+    \item \texttt{Transaction\-Scope\-Async\-Flow\-Option.\-Enabled} is mandatory: without it, \texttt{Transaction.\-Current} does not flow across the first \texttt{await} and the outbox row falls outside the transaction.
+    \item Isolation level is tuned to \texttt{ReadCommitted} to avoid a hidden throughput tax from the default \texttt{Serializable} (QA-3 concern).
+\end{itemize}
+
+\subsection{OutboxDispatcherTask}
+
+An \texttt{IScheduleTask} polling the outbox table on a 5-10~s cadence. For each undispatched row it publishes to RabbitMQ via \texttt{RabbitMqPublisher} and, on broker ack, sets \texttt{DispatchedOnUtc}. On failure it increments \texttt{Attempts}; rows exceeding a configured maximum remain in the table as a dead-letter view for manual inspection.
+
+\subsection{OutboxRetentionTask}
+
+A second \texttt{IScheduleTask} that deletes dispatched outbox rows older than 7~days, preventing unbounded table growth (Risk~R5 mitigation).
+
+% -------------------------------------------------------
+\section{OmnichannelConsumers Plugin}
+
+\texttt{Nop.\-Plugin.\-Misc.\-Omnichannel\-Consumers} is the inbound path. It subscribes to RabbitMQ, deduplicates messages, and routes them to the appropriate handler.
+
+\subsection{RabbitMqSubscriberTask}
+
+An \texttt{IScheduleTask} that drives the RabbitMQ consumer loop. On each tick it drains available messages from the configured queues and dispatches them to \texttt{IInboxMessageHandler} implementations.
+
+\subsection{InboxDeduplicationService}
+
+Before any handler runs, \texttt{InboxDeduplicationService} checks whether the message's \texttt{EventId} already exists in the \texttt{ProcessedInboxMessage} table. If it does, the message is silently discarded. This enforces idempotency at the infrastructure layer, freeing individual handlers from duplicating the check.
+
+\texttt{ProcessedInboxMessage} is persisted via a dedicated schema migration in this plugin.
+
+\subsection{Event Handlers}
+
+\begin{table}[H]
+\centering
+\caption{Inbound event handlers}
+\label{tab:handlers}
+\small
+\begin{tabularx}{\textwidth}{@{} L{5.5cm} X @{}}
+\toprule
+\textbf{Handler} & \textbf{Behaviour} \\
+\midrule
+\texttt{Stock\-Reserved\-Handler} & Moves the order from \texttt{Placed} to \texttt{Confirmed}; publishes \texttt{Order\-Confirmed\-Event} to the outbox for the Shipping service \\
+\addlinespace
+\texttt{Reservation\-Rejected\-Handler} & Delegates to \texttt{Compensation\-Service}: voids the payment, notifies the customer, transitions order to \texttt{Compensated} \\
+\addlinespace
+\texttt{Stock\-Level\-Changed\-Handler} & Updates the Catalog stock projection (read model) inside the monolith \\
+\addlinespace
+\texttt{Shipment\-Dispatched\-Handler} & Advances the order to \texttt{Shipped} state and records the tracking reference \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{CompensationService}
+
+Orchestrates the compensation flow on reservation rejection:
+\begin{enumerate}
+    \item Void or refund the payment authorisation.
+    \item Send a customer notification (via nopCommerce's existing messaging infrastructure).
+    \item Transition the order status to \texttt{Compensated}.
+    \item Publish \texttt{OrderCompensatedEvent} (in-process, for audit trail).
+\end{enumerate}
+
+% -------------------------------------------------------
+\section{Feature Flag: Synchronous Fallback}
+
+A feature flag controls whether the legacy synchronous stock decrement inside \texttt{OrderProcessingService} remains active. During the migration period this flag allows the team to run both paths side-by-side and validate the asynchronous path before fully cutting over. This is the migration strategy for risk R2.
