@@ -85,7 +85,11 @@ docker compose start inventory_service
 \textbf{Proves:} the compensation flow works; the \texttt{Compensated} state is reachable.
 
 \begin{enumerate}
-    \item Configure the Inventory Sync Service (or its OpenBoxes stub) to return a rejection response for the next reservation request. (See the WireMock / stub configuration in \texttt{docker/wiremock/mappings/}.)
+    \item In \texttt{docker-compose.yml}, set \texttt{OpenBoxes\_\_ForceReject=true} for the \texttt{inventory\_service}, then apply it:
+    \begin{lstlisting}[language=bash]
+docker compose up -d inventory_service
+    \end{lstlisting}
+    This bypasses the WireMock stock-check stub and forces the Inventory service to publish \texttt{ReservationRejectedEvent} for the next order.
     \item Place an order via the storefront.
     \item Observe the \texttt{ReservationRejectedEvent} arrive in the \texttt{ProcessedInboxMessage} table.
     \item In the admin panel, confirm the order transitions to \texttt{Compensated}.

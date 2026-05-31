@@ -194,6 +194,11 @@ public class Worker : BackgroundService
                 await _channel.QueueDeclareAsync(InboundQueue, durable: true, exclusive: false, autoDelete: false, arguments: queueArgs, cancellationToken: ct);
                 await _channel.QueueBindAsync(InboundQueue, Exchange, InboundRoutingKey, cancellationToken: ct);
 
+                // DLQ catch-all — binds to the fanout DLX so NACKed messages are
+                // observable in the RabbitMQ dashboard rather than silently dropped.
+                await _channel.QueueDeclareAsync("nopcommerce.events.dlq.all", durable: true, exclusive: false, autoDelete: false, arguments: null, cancellationToken: ct);
+                await _channel.QueueBindAsync("nopcommerce.events.dlq.all", DeadLetterExchange, routingKey: "", cancellationToken: ct);
+
                 _logger.LogInformation("Connected to RabbitMQ at {Host}:{Port}", host, port);
                 return;
             }
