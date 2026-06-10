@@ -1,0 +1,42 @@
+\chapter{Use of Large Language Models}
+\label{ch:llm}
+
+\section{Overview}
+
+The team used Claude by Anthropic as a productivity tool. This chapter documents how LLMs were used, where our judgement remained essential, and what we learned about effective human-LLM collaboration in a software architecture project.
+
+The guiding principle was \textbf{augmentation, not replacement}: every architectural decision, every design choice, and every line of production code was understood, reviewed, and owned by the team. LLMs were used to accelerate execution after decisions had been made, not to make decisions on our behalf.
+
+\section{Where LLMs Were Used}
+
+\subsection{Documentation and Report Writing}
+
+The most significant use was in drafting the report. We provided the architectural decisions, implementation outcomes, and reasoning; Claude was used to translate these into structured LaTeX prose, maintain consistency across chapters, and ensure the report accurately reflected the codebase.
+
+This required active collaboration: draft sections were reviewed against the actual implementation, corrected where they diverged, and refined through multiple iterations. The LLM was particularly useful for cross-cutting chapters such as the traceability matrix (Chapter~\ref{ch:traceability}) and the cross-cutting concerns chapter (Chapter~\ref{ch:crosscutting}), where synthesising information from multiple parts of the codebase into a coherent narrative was time-consuming.
+
+\subsection{Architecture Diagram Generation}
+
+Mermaid diagrams were generated iteratively with LLM assistance. We described the system behaviour, for example the full order lifecycle including the happy path, degradation, recovery, and compensation, and the LLM produced Mermaid source code that was then reviewed, corrected, and refined. This was faster than writing Mermaid syntax by hand, but every diagram was validated against the actual implementation before being included in the report or presentation.
+
+\subsection{Code Generation}
+
+The majority of production code was written by Claude based on our detailed specifications. We described the required behaviour, the nopCommerce extension points to use, and the constraints to respect (e.g., idempotency requirements for the inbox), and Claude produced implementation drafts. These were then reviewed against the architectural intent, tested against the QA scenarios, and corrected where they diverged from expected behaviour.
+
+\subsection{Architectural Reasoning}
+
+Claude was used as a sounding board during architectural discussions, for example, validating the rationale for splitting one plugin into two, or explaining why the \texttt{Compensated} order state could not reuse an existing \texttt{OrderStatus} value without losing semantic precision. In these cases the LLM did not drive the decision; it helped articulate and stress-test reasoning that the team had already developed.
+
+\section{Where LLMs Were Not Used}
+
+The following were entirely human-authored:
+
+\begin{itemize}
+    \item All architectural decisions: the transactional outbox pattern, the plugin split, the inbox deduplication strategy, the \texttt{Compensated} state design
+    \item The feasibility spike and its conclusions
+    \item All code review, functional testing, and validation against QA scenarios, every generated artefact was verified by the team before being accepted
+\end{itemize}
+
+\section{Reflection}
+
+Overall, LLM assistance significantly accelerated both implementation and documentation. Code generation was the highest-leverage use: rather than writing boilerplate and plumbing by hand, the team could focus on specifying the correct behaviour and validating that the generated code delivered it. The architecture and the decisions behind it remain the team's own; the LLM was an executor, not a designer.

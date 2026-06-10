@@ -1,0 +1,81 @@
+sequenceDiagram
+    autonumber
+    participant C  as Customer
+    participant OP as OrderProcessingService<br/>(TransactionScope decorator)
+    participant DB as nopCommerce DB<br/>(Order + OutboxMessage)
+    participant OD as OutboxDispatcher<br/>(IScheduleTask, 5–10 s)
+    participant MQ as RabbitMQ
+    participant IS as Inventory Sync Service<br/>(own DB)
+    participant OB as OpenBoxes stub<br/>(WireMock)
+    participant OC as OmnichannelConsumers<br/>(IScheduleTask subscriber)
+    participant SS as Shipping Service<br/>(own DB)
+    participant CA as Carrier API<br/>(WireMock)
+
+    %% ── Happy path ──────────────────────────────────────────────────────────
+    rect rgb(230, 245, 255)
+        Note over C,DB: One DB transaction — atomic commit or full rollback
+        C->>OP: place order
+        OP->>DB: INSERT Order + OrderItems
+        OP->>DB: INSERT OutboxMessage(OrderPlacedEvent, Pending)
+        DB-->>OP: both rows committed (TransactionScope.Complete)
+        OP-->>C: order confirmation (immediate)
+    end
+
+    rect rgb(240, 255, 240)
+        Note over OD,IS: Outbox dispatch — out of band
+        OD->>DB: poll Pending OutboxMessage rows
+        DB-->>OD: OrderPlacedEvent
+        OD->>MQ: publish to order.placed queue
+        MQ-->>OD: broker ack
+        OD->>DB: SET DispatchedOnUtc (mark Dispatched)
+    end
+
+    rect rgb(255, 250, 230)
+        Note over IS,MQ: Inventory Sync Service — external process
+        MQ->>IS: deliver OrderPlacedEvent
+        IS->>IS: check ProcessedInboxMessage (deduplication)
+        IS->>OB: POST /reserve-stock
+        OB-->>IS: 200 OK (stock reserved)
+        IS->>MQ: publish StockReservedEvent to order.confirmed queue
+    end
+
+    rect rgb(240, 255, 240)
+        Note over OC,DB: OmnichannelConsumers — back inside nopCommerce
+        MQ->>OC: deliver StockReservedEvent
+        OC->>DB: check ProcessedInboxMessage (deduplication)
+        OC->>DB: UPDATE Order status → Confirmed
+        OC->>DB: INSERT OutboxMessage(OrderConfirmedEvent, Pending)
+    end
+
+    rect rgb(240, 255, 240)
+        Note over OD,SS: Second outbox dispatch — shipping leg
+        OD->>DB: poll Pending OutboxMessage rows
+        DB-->>OD: OrderConfirmedEvent
+        OD->>MQ: publish to order.confirmed queue
+        MQ-->>OD: broker ack
+        OD->>DB: SET DispatchedOnUtc
+    end
+
+    rect rgb(255, 250, 230)
+        Note over SS,CA: Shipping Service — external process
+        MQ->>SS: deliver OrderConfirmedEvent
+        SS->>CA: POST /shipment (WireMock carrier)
+        CA-->>SS: tracking reference
+        SS->>MQ: publish ShipmentDispatchedEvent
+    end
+
+    rect rgb(240, 255, 240)
+        MQ->>OC: deliver ShipmentDispatchedEvent
+        OC->>DB: UPDATE Order status → Shipped
+    end
+
+    %% ── Rejection / compensation path ───────────────────────────────────────
+    rect rgb(255, 235, 235)
+        Note over IS,OC: Rejection path (replaces happy path steps 9–10)
+        OB-->>IS: 409 Conflict (stock unavailable)
+        IS->>MQ: publish ReservationRejectedEvent
+        MQ->>OC: deliver ReservationRejectedEvent
+        OC->>DB: void payment authorisation
+        OC->>DB: send customer notification
+        OC->>DB: UPDATE Order status → Compensated
+    end
