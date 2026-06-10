@@ -6,7 +6,7 @@ fileignoreconfig:
 - filename: docs/part_2/chapters/03-implementation.tex
   checksum: 4aca4424584859869cb406454a6774b98956227ea9e95d229a5c478fc3907aef
 - filename: docs/part_2/chapters/08-tradeoffs.tex
-  checksum: 53d41c63ddcee8b0d7225b25caa863b3b87652e72660a199525ef38bcab2f831
+  checksum: 25c5821a6c1d2372f6417426a69f9dcf323b5715c229b13492279fb6e145f26e
 - filename: load-tests/setup.sh
   checksum: 926853277b83995523154ea7cb31c0ed14bbe300b0c946711c0d176ba151ebf0
 - filename: load-tests/order-placement.js
@@ -21,7 +21,7 @@ fileignoreconfig:
 - filename: docker-compose.yml
   checksum: 6556975f7cfeaf5ca56853ccc4037557d452b195dbfbe8f748e1a0b2b9903a63
 - filename: services/Nop.Service.Shipping/Worker.cs
-  checksum: 85ad0b112be849dcf04104d902f475785c0c06e7f448f16d47dd1856e9f74649
+  checksum: 94c5f1ece4bf1ea0e879a1f7fde3bbfc95d826d4746ca15c98f0fa45ed122eef
 - filename: services/Nop.Service.Inventory/Worker.cs
-  checksum: 0560360e42833866d8dd00000997d7d87fc2ba1fb93520ac470ab6a8a9d4ffc1
+  checksum: 2b90516ca4a2e984440d312ffeccfbc6bdfa784bba611b865bb499c92f365bf0
 version: "1.0"
